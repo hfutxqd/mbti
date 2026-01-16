@@ -1682,15 +1682,13 @@ function App(): React.ReactElement {
                         基于当前题库与作答情况计算的四维偏好比例，仅代表在本测评框架下的倾向分布。
                       </CardDescription>
                       {typeImage && (
-                        <div className="mt-3">
-                          <div className="flex items-center gap-3">
-                            <div className="h-16 w-16 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900">
-                              <img
-                                src={typeImage}
-                                alt={`${result.type} 类型示意图`}
-                                className="h-full w-full object-cover"
-                              />
-                            </div>
+                        <div className="mt-4 flex justify-center">
+                          <div className="h-24 w-24 sm:h-28 sm:w-28 md:h-32 md:w-32 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900">
+                            <img
+                              src={typeImage}
+                              alt={`${result.type} 类型示意图`}
+                              className="h-full w-full object-contain"
+                            />
                           </div>
                         </div>
                       )}
