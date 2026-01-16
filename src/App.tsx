@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import "./App.css"
 
 import { Moon, Sun, Upload, Link2, RefreshCw, Download, Copy, Info, AlertCircle, ArrowRight } from "lucide-react"
@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
@@ -32,6 +33,43 @@ import {
 type DimensionKey = "E" | "I" | "S" | "N" | "T" | "F" | "J" | "P"
 
 const DIM_KEYS: DimensionKey[] = ["E", "I", "S", "N", "T", "F", "J", "P"]
+
+type BuiltinBankKey = "pro-120" | "standard-80" | "simple-40" | "custom"
+
+interface BuiltinBankConfig {
+  key: BuiltinBankKey
+  label: string
+  description: string
+  file?: string
+}
+
+const BUILTIN_BANKS: BuiltinBankConfig[] = [
+  {
+    key: "pro-120",
+    label: "MBTI 专业版 120题",
+    description: "覆盖更全面的情境与行为，适合个人深度评估与教练场景。",
+    file: "/mbti_pro_120.json",
+  },
+  {
+    key: "standard-80",
+    label: "MBTI 标准版 80题",
+    description: "平衡测评时长与题目覆盖度，适合团队与工作坊使用。",
+    file: "/mbti_standard_80.json",
+  },
+  {
+    key: "simple-40",
+    label: "MBTI 简版 40题",
+    description: "快速自测版本，适合时间有限或首次尝试 MBTI 时使用。",
+    file: "/mbti_simple_40.json",
+  },
+  {
+    key: "custom",
+    label: "自定义题库",
+    description: "通过本地上传或 URL 加载的题库。",
+  },
+]
+
+const DEFAULT_BUILTIN_KEY: BuiltinBankKey = "pro-120"
 
 interface Weights {
   E: number
@@ -422,7 +460,8 @@ function buildResultSummaryText(result: MBTIResult): string {
 function App() {
   const [theme, setTheme] = useState<"light" | "dark">("light")
   const [questionBank, setQuestionBank] = useState<QuestionBank | null>(null)
-  const [bankSourceLabel, setBankSourceLabel] = useState<string>("内置题库：MBTI 专业版示例")
+  const [selectedBankKey, setSelectedBankKey] = useState<BuiltinBankKey>(DEFAULT_BUILTIN_KEY)
+  const [bankSourceLabel, setBankSourceLabel] = useState<string>("内置题库：MBTI 专业版 120题")
   const [loadingBank, setLoadingBank] = useState(false)
   const [bankError, setBankError] = useState<string | null>(null)
 
@@ -461,47 +500,71 @@ function App() {
     }
   }, [theme])
 
-  // 加载内置题库
+  const applyNewBank = useCallback(
+    (bank: QuestionBank, sourceLabel: string) => {
+      setQuestionBank(bank)
+      setBankSourceLabel(sourceLabel)
+      setAnswers({})
+      setResult(null)
+      setSubmitError(null)
+      setCopyHint(null)
+      if (bank.questions.length > 0) {
+        setActiveGroupId("0")
+      }
+    },
+    []
+  )
+
+  // 加载或切换内置题库
   useEffect(() => {
+    if (selectedBankKey === "custom") {
+      return
+    }
+
+    const config = BUILTIN_BANKS.find((b) => b.key === selectedBankKey && b.file)
+    if (!config || !config.file) {
+      return
+    }
+
+    let cancelled = false
+
     const loadBuiltin = async () => {
       try {
         setLoadingBank(true)
         setBankError(null)
-        const res = await fetch("/mbti_pro.json", { cache: "no-store" })
+        const res = await fetch(config.file!, { cache: "no-store" })
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}`)
         }
         const data = await res.json()
         const validated = validateQuestionBank(data)
         if (!validated.ok) {
-          setBankError(`内置题库格式校验失败：${validated.error}`)
+          if (!cancelled) {
+            setBankError(`内置题库格式校验失败：${validated.error}`)
+          }
           return
         }
-        applyNewBank(validated.data, `内置题库：${validated.data.metadata.title}`)
+        if (!cancelled) {
+          applyNewBank(validated.data, `内置题库：${validated.data.metadata.title}`)
+        }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
-        setBankError(`加载内置题库时出现问题：${msg}`)
+        if (!cancelled) {
+          setBankError(`加载内置题库时出现问题：${msg}`)
+        }
       } finally {
-        setLoadingBank(false)
+        if (!cancelled) {
+          setLoadingBank(false)
+        }
       }
     }
 
     loadBuiltin()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
-  const applyNewBank = (bank: QuestionBank, sourceLabel: string) => {
-    setQuestionBank(bank)
-    setBankSourceLabel(sourceLabel)
-    setAnswers({})
-    setResult(null)
-    setSubmitError(null)
-    setCopyHint(null)
-    if (bank.questions.length > 0) {
-      setActiveGroupId("0")
+    return () => {
+      cancelled = true
     }
-  }
-
+  }, [selectedBankKey, applyNewBank])
   const groups = useMemo(() => {
     if (!questionBank) return [] as { id: string; label: string; start: number; end: number }[]
     const size = 10
@@ -577,6 +640,7 @@ function App() {
           return
         }
         applyNewBank(validated.data, `本地文件：${file.name}`)
+        setSelectedBankKey("custom")
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
         setBankError(`解析题库 JSON 时出错：${msg}`)
@@ -608,6 +672,7 @@ function App() {
         return
       }
       applyNewBank(validated.data, `远程 URL：${urlInput.trim()}`)
+      setSelectedBankKey("custom")
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       setBankError(`从 URL 加载题库失败：${msg}。可能是网络、跨域（CORS）或 JSON 格式问题。`)
@@ -749,17 +814,72 @@ function App() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm">题库来源与当前状态</CardTitle>
                 <CardDescription className="text-xs text-slate-500 dark:text-slate-400">
-                  你可以直接使用内置 MBTI 专业版题库，也可以加载符合 Schema 的自定义题库 JSON。
+                  内置三套中文题库（简版 40题 / 标准版 80题 / 专业版 120题），也可以加载符合 Schema 的自定义题库 JSON。
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div className="space-y-2 text-xs">
+                  <Label className="flex items-center justify-between text-xs">
+                    <span className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                      <Info className="h-3.5 w-3.5" />
+                      <span>题库选择</span>
+                    </span>
+                    {selectedBankKey === "custom" && (
+                      <Badge
+                        variant="outline"
+                        className="border-amber-300 bg-amber-50 text-[11px] font-normal text-amber-700 dark:border-amber-500/70 dark:bg-amber-950/40 dark:text-amber-100"
+                      >
+                        当前为自定义题库
+                      </Badge>
+                    )}
+                  </Label>
+                  <Select
+                    value={selectedBankKey}
+                    onValueChange={(value) => {
+                      const key = value as BuiltinBankKey
+                      if (key === "custom") return
+                      setSelectedBankKey(key)
+                    }}
+                  >
+                    <SelectTrigger className="h-8 w-full text-xs">
+                      <SelectValue placeholder="选择要使用的题库" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {BUILTIN_BANKS.filter((b) => b.key !== "custom").map((bank) => (
+                        <SelectItem key={bank.key} value={bank.key} className="text-xs">
+                          {bank.label}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="custom" disabled className="text-xs">
+                        自定义题库（通过下方上传 / URL 加载）
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    默认使用专业版 120题，可在此切换为简版或标准版。加载外部题库后会自动切换为“自定义题库”状态。
+                  </p>
+                </div>
+
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300">
                     <Info className="h-3.5 w-3.5" />
-                    <span>当前题库</span>
+                    <span>当前题库概览</span>
                   </div>
                   <div className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-700 dark:bg-slate-900 dark:text-slate-300">
                     <div className="font-medium">{bankSourceLabel}</div>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                      {questionBank ? (
+                        <>
+                          <span>标题：{questionBank.metadata.title}</span>
+                          <span>·</span>
+                          <span>版本：{questionBank.metadata.version}</span>
+                          <span>·</span>
+                          <span>语言：{questionBank.metadata.language}</span>
+                        </>
+                      ) : (
+                        <span>题库尚未成功加载或正在校验中。</span>
+                      )}
+                    </div>
                     <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
                       <span>
                         题目数：{totalQuestions > 0 ? totalQuestions : "--"}
@@ -799,7 +919,7 @@ function App() {
                     <div className="flex gap-2">
                       <Input
                         id="bank-url"
-                        placeholder="例如：https://example.com/mbti_pro.json"
+                        placeholder="例如：https://example.com/mbti_pro_120.json"
                         value={urlInput}
                         onChange={(e) => setUrlInput(e.target.value)}
                         className="h-8 text-xs"
