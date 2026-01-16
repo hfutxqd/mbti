@@ -28,11 +28,14 @@ import {
   YAxis,
 } from "recharts"
 
+import { useIsMobile } from "@/hooks/use-mobile"
+
 // ================= 类型定义 =================
 
 type DimensionKey = "E" | "I" | "S" | "N" | "T" | "F" | "J" | "P"
 
 const DIM_KEYS: DimensionKey[] = ["E", "I", "S", "N", "T", "F", "J", "P"]
+const QUESTIONS_PER_GROUP = 10
 
 type BuiltinBankKey = "pro-120" | "standard-80" | "simple-40" | "custom"
 
@@ -69,7 +72,7 @@ const BUILTIN_BANKS: BuiltinBankConfig[] = [
   },
 ]
 
-const DEFAULT_BUILTIN_KEY: BuiltinBankKey = "pro-120"
+const DEFAULT_BUILTIN_KEY: BuiltinBankKey = "simple-40"
 
 interface Weights {
   E: number
@@ -458,10 +461,11 @@ function buildResultSummaryText(result: MBTIResult): string {
 // ================= 主组件 =================
 
 function App() {
+  const isMobile = useIsMobile()
   const [theme, setTheme] = useState<"light" | "dark">("light")
   const [questionBank, setQuestionBank] = useState<QuestionBank | null>(null)
   const [selectedBankKey, setSelectedBankKey] = useState<BuiltinBankKey>(DEFAULT_BUILTIN_KEY)
-  const [bankSourceLabel, setBankSourceLabel] = useState<string>("内置题库：MBTI 专业版 120题")
+  const [bankSourceLabel, setBankSourceLabel] = useState<string>("内置题库：MBTI 简版 40题")
   const [loadingBank, setLoadingBank] = useState(false)
   const [bankError, setBankError] = useState<string | null>(null)
 
@@ -475,6 +479,7 @@ function App() {
 
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
   const [hasStarted, setHasStarted] = useState(false)
+  const [autoNext, setAutoNext] = useState(true)
 
   const questionSectionRef = useRef<HTMLDivElement | null>(null)
 
@@ -567,7 +572,7 @@ function App() {
   }, [selectedBankKey, applyNewBank])
   const groups = useMemo(() => {
     if (!questionBank) return [] as { id: string; label: string; start: number; end: number }[]
-    const size = 10
+    const size = QUESTIONS_PER_GROUP
     const res: { id: string; label: string; start: number; end: number }[] = []
     for (let i = 0; i < questionBank.questions.length; i += size) {
       const start = i
@@ -593,6 +598,31 @@ function App() {
     setAnswers((prev) => ({ ...prev, [questionId]: choiceIndex }))
     setSubmitError(null)
     setResult(null)
+
+    if (!questionBank || !isMobile || !autoNext) return
+
+    const currentIndex = questionBank.questions.findIndex((q) => q.id === questionId)
+    if (currentIndex === -1) return
+
+    const nextIndex = currentIndex + 1
+    if (nextIndex >= questionBank.questions.length) return
+
+    const nextGroupId = String(Math.floor(nextIndex / QUESTIONS_PER_GROUP) * QUESTIONS_PER_GROUP)
+    if (nextGroupId !== activeGroupId) {
+      setActiveGroupId(nextGroupId)
+    }
+
+    const nextQuestionId = questionBank.questions[nextIndex].id
+    const elementId = `question-card-${nextQuestionId}`
+
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => {
+        const el = document.getElementById(elementId)
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "start" })
+        }
+      })
+    }
   }
 
   const handleSubmit = () => {
@@ -765,7 +795,7 @@ function App() {
           </div>
         </header>
 
-        <main className="mx-auto max-w-5xl px-4 py-8 space-y-10">
+        <main className={`mx-auto max-w-5xl px-4 py-8 space-y-10 ${isMobile ? "pb-24" : ""}`}>
           {/* Hero 区 */}
           <section className="grid gap-6 md:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)] md:items-stretch">
             <Card className="border-slate-200 bg-gradient-to-br from-slate-50 via-white to-indigo-50/60 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-indigo-950/30">
@@ -856,7 +886,7 @@ function App() {
                     </SelectContent>
                   </Select>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    默认使用专业版 120题，可在此切换为简版或标准版。加载外部题库后会自动切换为“自定义题库”状态。
+                    默认使用简版 40题，可在此切换为标准版或专业版。加载外部题库后会自动切换为“自定义题库”状态。
                   </p>
                 </div>
 
@@ -977,7 +1007,7 @@ function App() {
                       请根据日常真实偏好作答，无需“选对”，只需选择更贴近你的一项。
                     </CardDescription>
                   </div>
-                  <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400">
+                  <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 dark:text-slate-400">
                     <div>
                       已完成：
                       <span className="font-medium text-slate-900 dark:text-slate-100">
@@ -985,10 +1015,23 @@ function App() {
                       </span>
                       /{totalQuestions || "--"}
                     </div>
-                    <div className="hidden items-center gap-2 sm:flex">
-                      <span>强制答完再出结果</span>
-                      <Switch checked disabled className="scale-75" />
-                    </div>
+                    {!isMobile && (
+                      <div className="hidden items-center gap-2 sm:flex">
+                        <span>强制答完再出结果</span>
+                        <Switch checked disabled className="scale-75" />
+                      </div>
+                    )}
+                    {isMobile && (
+                      <div className="flex items-center gap-2">
+                        <span>自动下一题</span>
+                        <Switch
+                          checked={autoNext}
+                          onCheckedChange={setAutoNext}
+                          className="scale-75"
+                          aria-label="切换作答后是否自动跳转到下一题"
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="mt-3 space-y-1">
@@ -1007,8 +1050,9 @@ function App() {
                     onValueChange={(v) => setActiveGroupId(v)}
                     className="space-y-4"
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <TabsList className="flex max-w-full flex-wrap gap-1">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="w-full overflow-x-auto">
+                        <TabsList className="flex w-max gap-1">
                         {groups.map((g) => (
                           <TabsTrigger
                             key={g.id}
@@ -1019,7 +1063,8 @@ function App() {
                           </TabsTrigger>
                         ))}
                       </TabsList>
-                      <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                      </div>
+                      <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
                         <span>点击分组可快速跳转不同题段。</span>
                       </div>
                     </div>
@@ -1032,6 +1077,7 @@ function App() {
                           return (
                             <Card
                               key={q.id}
+                              id={`question-card-${q.id}`}
                               className="border-slate-200 bg-slate-50/60 transition hover:border-indigo-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/60 dark:hover:border-indigo-500/70"
                             >
                               <CardHeader className="flex flex-row items-start justify-between gap-4 pb-3">
@@ -1039,7 +1085,7 @@ function App() {
                                   <CardTitle className="text-sm font-medium sm:text-[15px]">
                                     第 {globalIndex + 1} 题
                                   </CardTitle>
-                                  <CardDescription className="mt-1 text-xs leading-relaxed text-slate-700 dark:text-slate-300">
+                                  <CardDescription className="mt-1 text-sm leading-relaxed text-slate-700 dark:text-slate-300">
                                     {q.text}
                                   </CardDescription>
                                 </div>
@@ -1056,14 +1102,14 @@ function App() {
                                 <RadioGroup
                                   value={selectedIndex !== undefined ? String(selectedIndex) : ""}
                                   onValueChange={(value) => handleAnswerChange(q.id, Number(value))}
-                                  className="space-y-2"
+                                  className="space-y-2.5"
                                 >
                                   {q.choices.map((choice, cIdx) => {
                                     const checked = selectedIndex === cIdx
                                     return (
                                       <label
                                         key={cIdx}
-                                        className={`flex cursor-pointer items-start gap-2 rounded-md border px-3 py-2 text-xs sm:text-sm transition ${
+                                        className={`flex cursor-pointer items-start gap-3 rounded-md border px-3 py-3 text-sm transition ${
                                           checked
                                             ? "border-indigo-500 bg-indigo-50/80 shadow-sm dark:border-indigo-400 dark:bg-indigo-950/50"
                                             : "border-slate-200 bg-white/70 hover:border-indigo-300 dark:border-slate-700 dark:bg-slate-900/60 dark:hover:border-indigo-500/70"
@@ -1093,7 +1139,7 @@ function App() {
                 )}
               </CardContent>
 
-              <CardFooter className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/60 px-4 py-3 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-950/70 dark:text-slate-300 sm:flex-row sm:items-center sm:justify-between">
+              <CardFooter className="hidden border-t border-slate-100 bg-slate-50/60 px-4 py-3 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-950/70 dark:text-slate-300 sm:flex sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <Button
                     size="sm"
@@ -1167,7 +1213,7 @@ function App() {
                         <span>四维偏好强度条形图</span>
                         <span className="text-[11px]">越接近 100%，代表在该方向上的偏好越明显。</span>
                       </div>
-                      <div className="h-[220px] rounded-md border border-slate-100 bg-slate-50/70 p-2 dark:border-slate-800 dark:bg-slate-950/70">
+                      <div className="h-56 rounded-md border border-slate-100 bg-slate-50/70 p-2 dark:border-slate-800 dark:bg-slate-950/70">
                         <ResponsiveContainer width="100%" height="100%">
                           <BarChart data={chartData} margin={{ top: 8, right: 8, left: -16, bottom: 8 }}>
                             <CartesianGrid strokeDasharray="3 3" className="stroke-slate-200 dark:stroke-slate-800" />
@@ -1330,6 +1376,38 @@ function App() {
             </Accordion>
           </section>
         </main>
+
+        {isMobile && questionBank && totalQuestions > 0 && (
+          <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-4 pt-2 pb-[env(safe-area-inset-bottom)] text-xs text-slate-700 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 dark:text-slate-100">
+            <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+              <div className="flex flex-1 items-center gap-2">
+                <Button
+                  size="sm"
+                  className="flex-1 gap-1"
+                  disabled={!questionBank || totalQuestions === 0}
+                  onClick={handleSubmit}
+                  aria-label="生成 MBTI 测试结果"
+                >
+                  生成结果
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 gap-1"
+                  onClick={handleReset}
+                  disabled={!questionBank || totalQuestions === 0}
+                  aria-label="重新作答 MBTI 测试题目"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  重新作答
+                </Button>
+              </div>
+              <div className="hidden text-[11px] text-slate-500 sm:block dark:text-slate-400">
+                已完成 {answeredCount}/{totalQuestions || "--"}
+              </div>
+            </div>
+          </div>
+        )}
 
         <footer className="mt-8 border-t border-slate-200 bg-slate-50/80 py-4 text-[11px] text-slate-500 dark:border-slate-800 dark:bg-slate-950/80 dark:text-slate-400">
           <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4">
