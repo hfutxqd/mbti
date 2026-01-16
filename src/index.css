@@ -25,3 +25,10 @@
   }
 }
 
+
+@layer base {
+  html {
+    scroll-padding-top: var(--sticky-header-h, 64px);
+    scroll-padding-bottom: calc(var(--bottom-bar-h, 72px) + env(safe-area-inset-bottom));
+  }
+}

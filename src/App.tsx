@@ -458,6 +458,22 @@ function buildResultSummaryText(result: MBTIResult): string {
   return lines.join("\n")
 }
 
+function getTimeEstimateRange(totalQuestions: number): string {
+  if (!totalQuestions || totalQuestions <= 0) {
+    return "约 5–10 分钟"
+  }
+
+  const baselineQuestions = 40
+  const minPer40 = 6
+  const maxPer40 = 10
+  const factor = totalQuestions / baselineQuestions
+
+  const min = Math.round(minPer40 * factor)
+  const max = Math.round(maxPer40 * factor)
+
+  return `约 ${min}–${max} 分钟`
+}
+
 // ================= 主组件 =================
 
 function App() {
@@ -482,6 +498,8 @@ function App() {
   const [autoNext, setAutoNext] = useState(true)
 
   const questionSectionRef = useRef<HTMLDivElement | null>(null)
+  const headerRef = useRef<HTMLElement | null>(null)
+  const bottomBarRef = useRef<HTMLDivElement | null>(null)
 
   // 初始化主题
   useEffect(() => {
@@ -593,6 +611,28 @@ function App() {
   const totalQuestions = questionBank?.questions.length ?? 0
   const answeredCount = useMemo(() => Object.keys(answers).length, [answers])
   const progressValue = totalQuestions > 0 ? Math.round((answeredCount / totalQuestions) * 100) : 0
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const root = document.documentElement
+
+    const updateLayoutVars = () => {
+      const headerHeight = headerRef.current?.getBoundingClientRect().height ?? 0
+      const bottomBarHeight = bottomBarRef.current?.getBoundingClientRect().height ?? 0
+
+      if (headerHeight > 0) {
+        root.style.setProperty("--sticky-header-h", `${headerHeight}px`)
+      }
+
+      root.style.setProperty("--bottom-bar-h", `${bottomBarHeight > 0 ? bottomBarHeight : 0}px`)
+    }
+
+    updateLayoutVars()
+    window.addEventListener("resize", updateLayoutVars)
+    return () => {
+      window.removeEventListener("resize", updateLayoutVars)
+    }
+  }, [isMobile, questionBank, totalQuestions])
 
   const handleAnswerChange = (questionId: string, choiceIndex: number) => {
     setAnswers((prev) => ({ ...prev, [questionId]: choiceIndex }))
@@ -761,11 +801,13 @@ function App() {
     [result]
   )
 
+  const timeEstimate = useMemo(() => getTimeEstimateRange(totalQuestions), [totalQuestions])
+
   return (
     <TooltipProvider>
       <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-50 transition-colors">
         {/* 顶部导航 */}
-        <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/80 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80">
+        <header ref={headerRef} className="sticky top-0 z-20 border-b border-slate-200 bg-white/80 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80">
           <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-500 to-sky-400 text-xs font-bold text-white shadow-sm">
@@ -795,7 +837,14 @@ function App() {
           </div>
         </header>
 
-        <main className={`mx-auto max-w-5xl px-4 py-8 space-y-10 ${isMobile ? "pb-24" : ""}`}>
+        <main
+          className="mx-auto max-w-5xl px-4 py-8 space-y-10"
+          style={
+            isMobile
+              ? { paddingBottom: "calc(var(--bottom-bar-h, 72px) + env(safe-area-inset-bottom))" }
+              : undefined
+          }
+        >
           {/* Hero 区 */}
           <section className="grid gap-6 md:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)] md:items-stretch">
             <Card className="border-slate-200 bg-gradient-to-br from-slate-50 via-white to-indigo-50/60 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-indigo-950/30">
@@ -815,7 +864,7 @@ function App() {
                 <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-slate-400">
                   <div className="flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                    <span>约 8–12 分钟 · 单页作答</span>
+                    <span>{timeEstimate} · 单页作答</span>
                   </div>
                   <Separator orientation="vertical" className="hidden h-3 sm:inline" />
                   <div className="flex items-center gap-1.5">
@@ -829,7 +878,12 @@ function App() {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
-                  <Button size="lg" className="gap-2" onClick={handleStartTest}>
+                  <Button
+                    size="lg"
+                    className="gap-2"
+                    onClick={handleStartTest}
+                    aria-label={hasStarted ? "继续作答 MBTI 测试" : "开始 MBTI 测试"}
+                  >
                     <span>{hasStarted ? "继续作答" : "开始测试"}</span>
                     <ArrowRight className="h-4 w-4" />
                   </Button>
@@ -1079,6 +1133,7 @@ function App() {
                               key={q.id}
                               id={`question-card-${q.id}`}
                               className="border-slate-200 bg-slate-50/60 transition hover:border-indigo-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/60 dark:hover:border-indigo-500/70"
+                              style={{ scrollMarginTop: "var(--sticky-header-h, 64px)" }}
                             >
                               <CardHeader className="flex flex-row items-start justify-between gap-4 pb-3">
                                 <div>
@@ -1378,7 +1433,10 @@ function App() {
         </main>
 
         {isMobile && questionBank && totalQuestions > 0 && (
-          <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-4 pt-2 pb-[env(safe-area-inset-bottom)] text-xs text-slate-700 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 dark:text-slate-100">
+          <div
+            ref={bottomBarRef}
+            className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-4 pt-2 pb-[env(safe-area-inset-bottom)] text-xs text-slate-700 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 dark:text-slate-100"
+          >
             <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
               <div className="flex flex-1 items-center gap-2">
                 <Button
