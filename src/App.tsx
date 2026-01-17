@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -175,6 +176,8 @@ interface TypeDescription {
   relationship: string
   cautions: string[]
 }
+
+type FilterMode = "all" | "unanswered" | "answered"
 
 // ================= 工具函数 =================
 
@@ -978,6 +981,7 @@ function App(): React.ReactElement {
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null)
   const [hasStarted, setHasStarted] = useState(false)
   const [autoNext, setAutoNext] = useState(true)
+  const [filterMode, setFilterMode] = useState<FilterMode>("all")
 
   const questionSectionRef = useRef<HTMLDivElement | null>(null)
   const resultSectionRef = useRef<HTMLElement | null>(null)
@@ -1213,29 +1217,44 @@ function App(): React.ReactElement {
     setSubmitError(null)
     setResult(null)
 
-    if (!questionBank || !isMobile || !autoNext) return
+    if (!questionBank) return
 
     const currentIndex = questionBank.questions.findIndex((q) => q.id === questionId)
     if (currentIndex === -1) return
 
-    const nextIndex = currentIndex + 1
-    if (nextIndex >= questionBank.questions.length) return
+    if (isMobile) {
+      if (!autoNext) return
 
-    const nextGroupId = String(Math.floor(nextIndex / QUESTIONS_PER_GROUP) * QUESTIONS_PER_GROUP)
-    if (nextGroupId !== activeGroupId) {
-      setActiveGroupId(nextGroupId)
-    }
+      const nextIndex = currentIndex + 1
+      if (nextIndex >= questionBank.questions.length) return
 
-    const nextQuestionId = questionBank.questions[nextIndex].id
-    const elementId = `question-card-${nextQuestionId}`
+      const nextQuestionId = questionBank.questions[nextIndex].id
+      const elementId = `question-card-${nextQuestionId}`
 
-    if (typeof window !== "undefined") {
-      window.requestAnimationFrame(() => {
-        const el = document.getElementById(elementId)
-        if (el) {
-          el.scrollIntoView({ behavior: "smooth", block: "start" })
-        }
-      })
+      if (typeof window !== "undefined") {
+        window.requestAnimationFrame(() => {
+          const el = document.getElementById(elementId)
+          if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "start" })
+          }
+        })
+      }
+    } else {
+      if (!activeGroupId || groups.length === 0) return
+
+      const activeGroup = groups.find((g) => g.id === activeGroupId)
+      if (!activeGroup) return
+
+      const isLastInGroup = currentIndex === activeGroup.end - 1
+      if (!isLastInGroup) return
+
+      const currentGroupIndex = groups.findIndex((g) => g.id === activeGroupId)
+      if (currentGroupIndex === -1 || currentGroupIndex >= groups.length - 1) return
+
+      const nextGroup = groups[currentGroupIndex + 1]
+      if (nextGroup) {
+        setActiveGroupId(nextGroup.id)
+      }
     }
   }
 
@@ -1349,6 +1368,62 @@ function App(): React.ReactElement {
       })),
     [allPairScores]
   )
+
+  const renderQuestionCard = (q: Question, globalIndex: number) => {
+    const selectedIndex = answers[q.id]
+
+    return (
+      <Card
+        key={q.id}
+        id={`question-card-${q.id}`}
+        className="border-slate-200 bg-slate-50/60 transition hover:border-indigo-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/60 dark:hover:border-indigo-500/70"
+        style={{ scrollMarginTop: "var(--sticky-header-h, 64px)" }}
+      >
+        <CardHeader className="flex flex-row items-start justify-between gap-4 pb-3">
+          <div>
+            <CardTitle className="text-sm font-medium sm:text-[15px]">
+              第 {globalIndex + 1} 题
+            </CardTitle>
+            <CardDescription className="mt-1 text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+              {q.text}
+            </CardDescription>
+          </div>
+          {selectedIndex !== undefined && (
+            <Badge
+              variant="outline"
+              className="mt-1 border-emerald-300 bg-emerald-50 text-[10px] font-medium text-emerald-700 dark:border-emerald-500/70 dark:bg-emerald-950/40 dark:text-emerald-200"
+            >
+              已作答
+            </Badge>
+          )}
+        </CardHeader>
+        <CardContent className="pt-0">
+          <RadioGroup
+            value={selectedIndex !== undefined ? String(selectedIndex) : ""}
+            onValueChange={(value) => handleAnswerChange(q.id, Number(value))}
+            className="space-y-2.5"
+          >
+            {q.choices.map((choice, cIdx) => {
+              const checked = selectedIndex === cIdx
+              return (
+                <label
+                  key={cIdx}
+                  className={`flex cursor-pointer items-start gap-3 rounded-md border px-3 py-3 text-sm transition ${
+                    checked
+                      ? "border-indigo-500 bg-indigo-50/80 shadow-sm dark:border-indigo-400 dark:bg-indigo-950/50"
+                      : "border-slate-200 bg-white/70 hover:border-indigo-300 dark:border-slate-700 dark:bg-slate-900/60 dark:hover:border-indigo-500/70"
+                  }`}
+                >
+                  <RadioGroupItem value={String(cIdx)} className="mt-0.5" />
+                  <span>{choice.label}</span>
+                </label>
+              )
+            })}
+          </RadioGroup>
+        </CardContent>
+      </Card>
+    )
+  }
 
   const timeEstimate = useMemo(() => getTimeEstimateRange(totalQuestions), [totalQuestions])
 
@@ -1525,91 +1600,112 @@ function App(): React.ReactElement {
               </CardHeader>
 
               <CardContent className="space-y-4">
-                {questionBank && groups.length > 0 ? (
-                  <Tabs
-                    value={activeGroupId ?? groups[0]?.id}
-                    onValueChange={(v) => setActiveGroupId(v)}
-                    className="space-y-4"
-                  >
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="w-full overflow-x-auto">
-                        <TabsList className="flex w-max gap-1">
-                        {groups.map((g) => (
-                          <TabsTrigger
-                            key={g.id}
-                            value={g.id}
-                            className="px-2 py-1 text-[11px] sm:text-xs"
-                          >
-                            {g.label}
-                          </TabsTrigger>
-                        ))}
-                      </TabsList>
+                {questionBank && totalQuestions > 0 ? (
+                  isMobile ? (
+                    <>
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                        <span className="font-medium text-slate-700 dark:text-slate-200">筛选题目：</span>
+                        <ToggleGroup
+                          type="single"
+                          value={filterMode}
+                          onValueChange={(value) => {
+                            if (!value) return
+                            setFilterMode(value as FilterMode)
+                          }}
+                          className="flex gap-1"
+                        >
+                          <ToggleGroupItem value="all" className="px-2 py-1 text-[11px]">
+                            全部
+                          </ToggleGroupItem>
+                          <ToggleGroupItem value="unanswered" className="px-2 py-1 text-[11px]">
+                            未作答
+                          </ToggleGroupItem>
+                          <ToggleGroupItem value="answered" className="px-2 py-1 text-[11px]">
+                            已作答
+                          </ToggleGroupItem>
+                        </ToggleGroup>
                       </div>
-                      <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
-                        <span>点击分组可快速跳转不同题段。</span>
+                      <div className="space-y-3">
+                        {questionBank.questions
+                          .map((q, idx) => ({ question: q, globalIndex: idx }))
+                          .filter(({ question }) => {
+                            const answered = answers[question.id] !== undefined
+                            if (filterMode === "answered") return answered
+                            if (filterMode === "unanswered") return !answered
+                            return true
+                          })
+                          .map(({ question, globalIndex }) => renderQuestionCard(question, globalIndex))}
                       </div>
-                    </div>
-
-                    {groups.map((g) => (
-                      <TabsContent key={g.id} value={g.id} className="space-y-3">
-                        {questionBank.questions.slice(g.start, g.end).map((q, idx) => {
-                          const globalIndex = g.start + idx
-                          const selectedIndex = answers[q.id]
-                          return (
-                            <Card
-                              key={q.id}
-                              id={`question-card-${q.id}`}
-                              className="border-slate-200 bg-slate-50/60 transition hover:border-indigo-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/60 dark:hover:border-indigo-500/70"
-                              style={{ scrollMarginTop: "var(--sticky-header-h, 64px)" }}
+                    </>
+                  ) : (
+                    <Tabs
+                      value={activeGroupId ?? groups[0]?.id}
+                      onValueChange={(v) => setActiveGroupId(v)}
+                      className="space-y-4"
+                    >
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="w-full overflow-x-auto">
+                          <TabsList className="flex w-max gap-1">
+                            {groups.map((g) => (
+                              <TabsTrigger
+                                key={g.id}
+                                value={g.id}
+                                className="px-2 py-1 text-[11px] sm:text-xs"
+                              >
+                                {g.label}
+                              </TabsTrigger>
+                            ))}
+                          </TabsList>
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+                          <span>点击分组可快速跳转不同题段。</span>
+                          <div className="flex items-center gap-2">
+                            <span>筛选题目：</span>
+                            <ToggleGroup
+                              type="single"
+                              value={filterMode}
+                              onValueChange={(value) => {
+                                if (!value) return
+                                setFilterMode(value as FilterMode)
+                              }}
+                              className="flex gap-1"
                             >
-                              <CardHeader className="flex flex-row items-start justify-between gap-4 pb-3">
-                                <div>
-                                  <CardTitle className="text-sm font-medium sm:text-[15px]">
-                                    第 {globalIndex + 1} 题
-                                  </CardTitle>
-                                  <CardDescription className="mt-1 text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-                                    {q.text}
-                                  </CardDescription>
-                                </div>
-                                {selectedIndex !== undefined && (
-                                  <Badge
-                                    variant="outline"
-                                    className="mt-1 border-emerald-300 bg-emerald-50 text-[10px] font-medium text-emerald-700 dark:border-emerald-500/70 dark:bg-emerald-950/40 dark:text-emerald-200"
-                                  >
-                                    已作答
-                                  </Badge>
-                                )}
-                              </CardHeader>
-                              <CardContent className="pt-0">
-                                <RadioGroup
-                                  value={selectedIndex !== undefined ? String(selectedIndex) : ""}
-                                  onValueChange={(value) => handleAnswerChange(q.id, Number(value))}
-                                  className="space-y-2.5"
-                                >
-                                  {q.choices.map((choice, cIdx) => {
-                                    const checked = selectedIndex === cIdx
-                                    return (
-                                      <label
-                                        key={cIdx}
-                                        className={`flex cursor-pointer items-start gap-3 rounded-md border px-3 py-3 text-sm transition ${
-                                          checked
-                                            ? "border-indigo-500 bg-indigo-50/80 shadow-sm dark:border-indigo-400 dark:bg-indigo-950/50"
-                                            : "border-slate-200 bg-white/70 hover:border-indigo-300 dark:border-slate-700 dark:bg-slate-900/60 dark:hover:border-indigo-500/70"
-                                        }`}
-                                      >
-                                        <RadioGroupItem value={String(cIdx)} className="mt-0.5" />
-                                        <span>{choice.label}</span>
-                                      </label>
-                                    )
-                                  })}
-                                </RadioGroup>
-                              </CardContent>
-                            </Card>
-                          )
-                        })}
-                      </TabsContent>
-                    ))}
-                  </Tabs>
+                              <ToggleGroupItem value="all" className="px-2 py-1 text-[11px]">
+                                全部
+                              </ToggleGroupItem>
+                              <ToggleGroupItem value="unanswered" className="px-2 py-1 text-[11px]">
+                                未作答
+                              </ToggleGroupItem>
+                              <ToggleGroupItem value="answered" className="px-2 py-1 text-[11px]">
+                                已作答
+                              </ToggleGroupItem>
+                            </ToggleGroup>
+                          </div>
+                        </div>
+                      </div>
+
+                      {groups.map((g) => {
+                        const groupQuestions = questionBank.questions
+                          .slice(g.start, g.end)
+                          .map((q, idx) => ({ question: q, globalIndex: g.start + idx }))
+
+                        const visibleQuestions = groupQuestions.filter(({ question }) => {
+                          const answered = answers[question.id] !== undefined
+                          if (filterMode === "answered") return answered
+                          if (filterMode === "unanswered") return !answered
+                          return true
+                        })
+
+                        return (
+                          <TabsContent key={g.id} value={g.id} className="space-y-3">
+                            {visibleQuestions.map(({ question, globalIndex }) =>
+                              renderQuestionCard(question, globalIndex)
+                            )}
+                          </TabsContent>
+                        )
+                      })}
+                    </Tabs>
+                  )
                 ) : (
                   <div className="rounded-md bg-slate-50 px-4 py-6 text-xs text-slate-600 dark:bg-slate-900 dark:text-slate-300">
                     {bankError ? (
