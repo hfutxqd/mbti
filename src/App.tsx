@@ -65,8 +65,8 @@ type BuiltinBankKey =
   | "ext-180"
   | "bigfive-simple-60"
   | "bigfive-pro-240"
-  | "enneagram-36"
-  | "enneagram-108"
+  | "enneagram-simple-36"
+  | "enneagram-pro-108"
   | "eysenck-epq-short"
   | "eysenck-epq-pro"
 
@@ -137,18 +137,18 @@ const BUILTIN_BANKS: BuiltinBankConfig[] = [
     file: "/bigfive_pro_240.json",
   },
   {
-    key: "enneagram-36",
+    key: "enneagram-simple-36",
     model: "Enneagram",
-    label: "九型人格 36题（敬请期待）",
-    description: "占位题库，后续将补充完整的九型人格测评。",
-    comingSoon: true,
+    label: "九型人格 简化版 36题",
+    description: "每型各 4 题，适合快速了解九型人格九个基本能量的分布。",
+    file: "/enneagram_simple_36.json",
   },
   {
-    key: "enneagram-108",
+    key: "enneagram-pro-108",
     model: "Enneagram",
-    label: "九型人格 108题（敬请期待）",
-    description: "占位题库，后续将提供更深入的九型人格专业版。",
-    comingSoon: true,
+    label: "九型人格 专业版 108题",
+    description: "每型各 12 题，正反向均衡覆盖，适合深度自我探索与辅导场景。",
+    file: "/enneagram_pro_108.json",
   },
   {
     key: "eysenck-epq-short",
@@ -239,7 +239,21 @@ interface BigFiveResult extends BaseResult {
   traits: BigFiveTraitScore[]
 }
 
-type AnyResult = MBTIResult | BigFiveResult
+interface EnneagramTraitScore {
+  key: string
+  label: string
+  score: number
+  percent: number
+}
+
+interface EnneagramResult extends BaseResult {
+  model: "Enneagram"
+  traits: EnneagramTraitScore[]
+  mainType: string
+  wingType: string | null
+}
+
+type AnyResult = MBTIResult | BigFiveResult | EnneagramResult
 
 interface TypeDescription {
   name: string
@@ -406,6 +420,15 @@ const PERCENT_PARAM_KEYS = [
   "p_turb",
   "p_h",
   "p_c",
+  "p_1",
+  "p_2",
+  "p_3",
+  "p_4",
+  "p_5",
+  "p_6",
+  "p_7",
+  "p_8",
+  "p_9",
 ] as const
 
 type PercentParamKey = (typeof PERCENT_PARAM_KEYS)[number]
@@ -518,6 +541,15 @@ function updateUrlWithResult(result: AnyResult | null, bankKey?: BuiltinBankKey 
             break
         }
         if (!paramName) continue
+        url.searchParams.set(paramName, String(clampPercent(trait.percent)))
+      }
+    } else if (result.model === "Enneagram") {
+      const enne = result as EnneagramResult
+      url.searchParams.set("result", "ENNEAGRAM")
+
+      for (const trait of enne.traits) {
+        if (!trait.key) continue
+        const paramName = `p_${trait.key}`
         url.searchParams.set(paramName, String(clampPercent(trait.percent)))
       }
     }
@@ -1173,6 +1205,92 @@ function computeBigFiveResult(bank: QuestionBank, answers: Record<string, number
   }
 }
 
+function computeEnneagramResult(bank: QuestionBank, answers: Record<string, number>): EnneagramResult {
+  const dimKeys: string[] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+
+  const scores: Record<string, number> = {}
+  const maxScores: Record<string, number> = {}
+  for (const key of dimKeys) {
+    scores[key] = 0
+    maxScores[key] = 0
+  }
+
+  // 计算每个维度理论最高分（假设每题都选该维度权重最大的选项）
+  for (const q of bank.questions) {
+    for (const key of dimKeys) {
+      let localMax = 0
+      for (const choice of q.choices) {
+        const v = choice.weights[key] ?? 0
+        if (v > localMax) {
+          localMax = v
+        }
+      }
+      maxScores[key] += localMax
+    }
+  }
+
+  let answeredCount = 0
+
+  for (const q of bank.questions) {
+    const choiceIndex = answers[q.id]
+    if (choiceIndex === undefined || choiceIndex === null) continue
+    const choice = q.choices[choiceIndex]
+    if (!choice) continue
+    answeredCount++
+    for (const key of dimKeys) {
+      const v = choice.weights[key] ?? 0
+      scores[key] += v
+    }
+  }
+
+  const typeInterps =
+    (bank.interpretations?.types as Record<string, TypeDescription | undefined> | undefined) ?? undefined
+
+  const traits: EnneagramTraitScore[] = dimKeys.map((key) => {
+    const score = scores[key]
+    const max = maxScores[key]
+    const percent = max > 0 ? Math.round((score / max) * 100) : 0
+    const label = typeInterps?.[key]?.name ?? `${key} 型`
+    return {
+      key,
+      label,
+      score,
+      percent,
+    }
+  })
+
+  const sorted = [...traits].sort((a, b) => b.percent - a.percent)
+  const mainTrait = sorted[0] ?? traits[0]
+  const mainType = mainTrait ? mainTrait.key : "1"
+
+  let wingType: string | null = null
+  const mainIndex = Number(mainType)
+  if (Number.isFinite(mainIndex)) {
+    const leftKey = ((mainIndex + 7) % 9 + 1).toString() // main-1，1 的左翼是 9
+    const rightKey = (mainIndex % 9 + 1).toString() // main+1，9 的右翼是 1
+    const leftTrait = traits.find((t) => t.key === leftKey)
+    const rightTrait = traits.find((t) => t.key === rightKey)
+    const leftPercent = leftTrait?.percent ?? 0
+    const rightPercent = rightTrait?.percent ?? 0
+    if (leftPercent === 0 && rightPercent === 0) {
+      wingType = null
+    } else {
+      wingType = leftPercent >= rightPercent ? leftKey : rightKey
+    }
+  }
+
+  return {
+    model: "Enneagram",
+    traits,
+    mainType,
+    wingType,
+    answeredCount,
+    totalQuestions: bank.questions.length,
+    bankMetadata: bank.metadata,
+    createdAt: new Date().toISOString(),
+  }
+}
+
 function getTimeEstimateRange(totalQuestions: number): string {
   if (!totalQuestions || totalQuestions <= 0) {
     return "约 5–10 分钟"
@@ -1469,6 +1587,99 @@ function App(): React.ReactElement {
     }
   }, [])
 
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      const url = new URL(window.location.href)
+      const params = url.searchParams
+      const modelParam = params.get("model")
+      const rawResult = params.get("result")
+      const upperResult = rawResult ? rawResult.toUpperCase() : ""
+
+      const isEnneagram = modelParam === "Enneagram" || (!modelParam && upperResult === "ENNEAGRAM")
+      if (!isEnneagram) {
+        return
+      }
+
+      const dimKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+      const traits: EnneagramTraitScore[] = dimKeys.map((key) => {
+        const paramName = `p_${key}`
+        const raw = params.get(paramName)
+        const percent = raw != null ? clampPercent(Number(raw)) : 0
+        const label = `类型 ${key}`
+        return {
+          key,
+          label,
+          score: percent,
+          percent,
+        }
+      })
+
+      const sorted = [...traits].sort((a, b) => b.percent - a.percent)
+      const mainTrait = sorted[0] ?? traits[0]
+      const mainType = mainTrait ? mainTrait.key : "1"
+
+      let wingType: string | null = null
+      const mainIndex = Number(mainType)
+      if (Number.isFinite(mainIndex)) {
+        const leftKey = ((mainIndex + 7) % 9 + 1).toString()
+        const rightKey = (mainIndex % 9 + 1).toString()
+        const leftTrait = traits.find((t) => t.key === leftKey)
+        const rightTrait = traits.find((t) => t.key === rightKey)
+        const leftPercent = leftTrait?.percent ?? 0
+        const rightPercent = rightTrait?.percent ?? 0
+        if (leftPercent === 0 && rightPercent === 0) {
+          wingType = null
+        } else {
+          wingType = leftPercent >= rightPercent ? leftKey : rightKey
+        }
+      }
+
+      const placeholderMetadata: QuestionBankMetadata = {
+        title: "外部结果（九型人格维度占比）",
+        version: "1.0.0",
+        language: "zh-CN",
+        model: "Enneagram",
+      }
+
+      const placeholderResult: EnneagramResult = {
+        model: "Enneagram",
+        traits,
+        mainType,
+        wingType,
+        answeredCount: 0,
+        totalQuestions: 0,
+        bankMetadata: placeholderMetadata,
+        createdAt: new Date().toISOString(),
+      }
+
+      setSelectedModel("Enneagram")
+
+      const bankParam = params.get("bank")
+      const enneagramBanks = BUILTIN_BANKS.filter(
+        (b) => b.model === "Enneagram" && !b.comingSoon && b.file
+      )
+      let bankKeyToUse: BuiltinBankKey | null = null
+      if (bankParam) {
+        const matched = enneagramBanks.find((b) => b.key === bankParam)
+        if (matched) {
+          bankKeyToUse = matched.key
+        }
+      }
+      if (!bankKeyToUse && enneagramBanks.length > 0) {
+        bankKeyToUse = enneagramBanks[0].key
+      }
+      if (bankKeyToUse) {
+        setSelectedBankKey(bankKeyToUse)
+      }
+
+      setResult(placeholderResult)
+      setHasStarted(true)
+    } catch {
+      // 忽略不合法的 URL
+    }
+  }, [])
+
   const applyNewBank = useCallback(
     (bank: QuestionBank) => {
       setQuestionBank(bank)
@@ -1497,7 +1708,8 @@ function App(): React.ReactElement {
           const upper = rawResult.toUpperCase()
           const isMbtiResult = MBTI_TYPE_4_REGEX.test(upper) || MBTI_TYPE_6_REGEX.test(upper)
           const isBigFiveResult = upper === "OCEAN" || modelParam === "BigFive"
-          if (isMbtiResult || isBigFiveResult) {
+          const isEnneagramResult = upper === "ENNEAGRAM" || modelParam === "Enneagram"
+          if (isMbtiResult || isBigFiveResult || isEnneagramResult) {
             return
           }
         }
@@ -1719,6 +1931,8 @@ function App(): React.ReactElement {
       nextResult = computeMbtiResult(questionBank, answers)
     } else if (questionBank.metadata.model === "BigFive") {
       nextResult = computeBigFiveResult(questionBank, answers)
+    } else if (questionBank.metadata.model === "Enneagram") {
+      nextResult = computeEnneagramResult(questionBank, answers)
     } else {
       setSubmitError("当前选择的模型暂未上线，请切换到其他题库后重试。")
       return
@@ -1769,10 +1983,20 @@ function App(): React.ReactElement {
       if (!blob) {
         throw new Error("生成图片数据失败")
       }
-      const label =
-        result.model === "MBTI"
-          ? (result as MBTIResult).displayType
-          : "OCEAN"
+      let label: string
+      if (result.model === "MBTI") {
+        label = (result as MBTIResult).displayType
+      } else if (result.model === "BigFive") {
+        label = "OCEAN"
+      } else if (result.model === "Enneagram") {
+        const enne = result as EnneagramResult
+        label =
+          enne.wingType && enne.wingType !== enne.mainType
+            ? `ENNEAGRAM-${enne.mainType}w${enne.wingType}`
+            : `ENNEAGRAM-${enne.mainType}`
+      } else {
+        label = "RESULT"
+      }
       const fileName = `personality-result-${label}-${Date.now()}.png`
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
@@ -1798,6 +2022,7 @@ function App(): React.ReactElement {
 
   const mbtiResult = result && result.model === "MBTI" ? (result as MBTIResult) : null
   const bigFiveResult = result && result.model === "BigFive" ? (result as BigFiveResult) : null
+  const enneagramResult = result && result.model === "Enneagram" ? (result as EnneagramResult) : null
 
   const activeTypeInfo = useMemo(() => {
     if (!mbtiResult) return undefined
@@ -1908,6 +2133,216 @@ function App(): React.ReactElement {
               )
             })}
           </RadioGroup>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const renderEnneagramResult = () => {
+    if (!enneagramResult) return null
+
+    const titleType =
+      enneagramResult.wingType && enneagramResult.wingType !== enneagramResult.mainType
+        ? `${enneagramResult.mainType}w${enneagramResult.wingType}`
+        : enneagramResult.mainType
+
+    const typeInterps =
+      questionBank && questionBank.metadata.model === "Enneagram"
+        ? (questionBank.interpretations?.types as Record<string, TypeDescription | undefined> | undefined)
+        : undefined
+
+    const activeEnneTypeInfo = typeInterps ? typeInterps[enneagramResult.mainType] : undefined
+
+    return (
+      <Card className="border-slate-200 bg-white/90 shadow-sm dark:border-slate-800 dark:bg-slate-950/80">
+        <CardHeader className="pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-baseline gap-2 text-lg sm:text-xl">
+                <span>你的九型人格类型：</span>
+                <span className="font-mono text-2xl tracking-[0.25em] text-indigo-600 dark:text-indigo-300">
+                  {titleType}
+                </span>
+                {activeEnneTypeInfo && (
+                  <Badge variant="outline" className="text-xs font-normal">
+                    {activeEnneTypeInfo.name}
+                  </Badge>
+                )}
+              </CardTitle>
+              <CardDescription className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                基于当前题库与作答情况，对九个类型维度进行百分比评估，并推断主类型与翼型倾向。
+              </CardDescription>
+            </div>
+            <div className="flex flex-col items-end gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <div className="flex flex-wrap items-center gap-2">
+                <span>模型：Enneagram（九型人格）</span>
+                <span>
+                  · 题库：
+                  {activeBankConfig?.label ?? enneagramResult.bankMetadata.title}
+                </span>
+                <span>· 版本：{enneagramResult.bankMetadata.version}</span>
+                <span>
+                  · 已答：{enneagramResult.answeredCount}/{enneagramResult.totalQuestions}
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1"
+                onClick={handleReset}
+                aria-label="重新测试九型人格，返回答题模式"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                重新测试
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent className="grid gap-6 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1.1fr)]">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-300">
+                <span>九型维度分布</span>
+                <span className="text-[11px]">数值越高，代表该类型能量在本次测评中的倾向越明显。</span>
+              </div>
+              <div className="space-y-2 text-xs text-slate-700 dark:text-slate-300">
+                {enneagramResult.traits.map((t) => {
+                  const isMain = t.key === enneagramResult.mainType
+                  const isWing = t.key === enneagramResult.wingType
+                  const barColor = isMain
+                    ? "bg-indigo-500"
+                    : isWing
+                      ? "bg-emerald-500"
+                      : "bg-slate-400 dark:bg-slate-600"
+                  return (
+                    <div
+                      key={t.key}
+                      className="flex flex-col gap-1 rounded-md bg-slate-50 px-3 py-2 dark:bg-slate-900/70"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className={`font-medium ${isMain ? "text-indigo-700 dark:text-indigo-200" : ""}`}>
+                          {t.label}
+                          {isMain ? "（主类型）" : isWing ? "（翼型候选）" : ""}
+                        </span>
+                        <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                          {t.percent}%
+                        </span>
+                      </div>
+                      <div className="flex h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                        <div className={`h-full ${barColor}`} style={{ width: `${t.percent}%` }} />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <Card className="border-slate-200 bg-slate-50/80 shadow-none dark:border-slate-700 dark:bg-slate-900/70">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">类型简要说明</CardTitle>
+                <CardDescription className="text-xs text-slate-500 dark:text-slate-400">
+                  结合你的主类型，从整体气质与常见模式两个角度进行概览，翼型则为这一类型带来额外的色彩。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2 text-xs leading-relaxed text-slate-700 dark:text-slate-300">
+                <p>
+                  {activeEnneTypeInfo?.summary ??
+                    "当前题库暂未提供该类型的详细说明，你可以结合九个维度的分布，回顾自己在压力、放松和重要关系中的典型表现。"}
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  建议：
+                  {activeEnneTypeInfo?.advice ??
+                    "建议把本次结果视为一种“自我观察视角”，而不是固定标签。可以在接下来一段时间里，留心自己在哪些场景中最像图中的描述。"}
+                </p>
+                {enneagramResult.wingType && (
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    你的主类型为 {enneagramResult.mainType} 型，翼型倾向为 {enneagramResult.wingType} 型，通常会被记作{" "}
+                    {titleType}，翼型会在细节、风格和表现形式上对你产生影响。
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-200 bg-slate-50/70 shadow-none dark:border-slate-700 dark:bg-slate-900/70">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">职业与工作风格</CardTitle>
+                <CardDescription className="text-xs text-slate-500 dark:text-slate-400">
+                  从工作场景中的动力来源、优势与常见模式出发，帮助你理解自己更舒服的工作方式。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="text-xs leading-relaxed text-slate-700 dark:text-slate-300">
+                <p>
+                  {activeEnneTypeInfo?.career ??
+                    "你在工作中的表现往往会受到主类型能量的影响：有的人更偏向推动和决策，有的人更擅长支持与连接，有的人更强调深度与理解。可以结合结果回顾自己在项目中的典型角色。"}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-200 bg-slate-50/70 shadow-none dark:border-slate-700 dark:bg-slate-900/70">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">人际与情感倾向</CardTitle>
+                <CardDescription className="text-xs text-slate-500 dark:text-slate-400">
+                  聚焦你在亲密关系、合作与冲突中的自然反应模式。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="text-xs leading-relaxed text-slate-700 dark:text-slate-300">
+                <p>
+                  {activeEnneTypeInfo?.relationship ??
+                    "不同类型在表达需求、应对冲突和面对亲近感时有不同习惯。你可以结合结果思考：在紧张、被误解或感到亲近时，你更常见的反应是什么。"}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-200 bg-slate-50/70 shadow-none dark:border-slate-700 dark:bg-slate-900/70">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">需要留意的地方</CardTitle>
+                <CardDescription className="text-xs text-slate-500 dark:text-slate-400">
+                  并非缺点，而是容易反复出现的惯性模式，提前察觉有助于自我调节。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="text-xs leading-relaxed text-slate-700 dark:text-slate-300">
+                {activeEnneTypeInfo?.cautions && activeEnneTypeInfo.cautions.length > 0 ? (
+                  <ul className="list-disc space-y-1 pl-4">
+                    {activeEnneTypeInfo.cautions.map((item, index) => (
+                      <li key={index}>{item}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>
+                    当前类型暂无预设的注意事项，你可以留意：在压力增大或情绪紧绷时，自己是否会更容易重复某些固定反应，例如回避、指责、讨好或过度控制等。
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="border-dashed border-slate-200 bg-slate-50/60 shadow-none dark:border-slate-700 dark:bg-slate-900/60">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">结果导出与分享</CardTitle>
+                <CardDescription className="text-xs text-slate-500 dark:text-slate-400">
+                  生成当前结果截图，便于在教练会谈、团体 workshop 或个人记录中保存与回顾。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 text-xs">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    className="gap-1"
+                    onClick={handleCaptureImage}
+                    aria-label="将九型人格结果保存为 PNG 图片"
+                  >
+                    <Image className="h-3.5 w-3.5" />
+                    保存结果图片（PNG）
+                  </Button>
+                </div>
+                {captureHint && (
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">{captureHint}</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </CardContent>
       </Card>
     )
@@ -2191,7 +2626,7 @@ function App(): React.ReactElement {
                   </Badge>
                 </CardTitle>
                 <CardDescription className="text-xs leading-relaxed text-slate-600 sm:text-sm dark:text-slate-400">
-                  本页面提供多种人格模型的自测工具，目前已开放 MBTI 与大五人格题库，并预留九型人格与艾森克 EPQ 的入口。
+                  本页面提供多种人格模型的自测工具，目前已开放 MBTI、大五人格与九型人格题库，并预留艾森克 EPQ 的入口。
                   题目基于结构化问卷设计，完成作答后可获取维度百分比与简要中文解读。
                 </CardDescription>
               </CardHeader>
@@ -2244,7 +2679,7 @@ function App(): React.ReactElement {
                       </ToggleGroupItem>
                     </ToggleGroup>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                      当前已开放 MBTI 与大五人格测评，九型人格和艾森克 EPQ 将在后续版本逐步上线。
+                      当前已开放 MBTI、大五人格和九型人格测评，艾森克 EPQ 将在后续版本逐步上线。
                     </p>
                   </div>
 
@@ -2284,7 +2719,9 @@ function App(): React.ReactElement {
                         ? "默认使用简版 40题，可在此切换为标准版、专业版或扩展版。"
                         : selectedModel === "BigFive"
                           ? "可选择大五人格简化版 60题或专业版 240题，题目均基于 OCEAN 五维模型。"
-                          : "当前模型题库处于建设中，题目将于后续版本上线。"}
+                          : selectedModel === "Enneagram"
+                            ? "可选择九型人格简化版 36题或专业版 108题，适合快速了解或深入探索九型人格九种核心能量。"
+                            : "当前模型题库处于建设中，题目将于后续版本上线。"}
                     </p>
                   </div>
                 </div>
@@ -2816,6 +3253,7 @@ function App(): React.ReactElement {
               </Card>
               )}
               {bigFiveResult && renderBigFiveResult()}
+              {enneagramResult && renderEnneagramResult()}
             </section>
           )}
 
@@ -2830,9 +3268,9 @@ function App(): React.ReactElement {
                   1. 当前题库是如何设计的？
                 </AccordionTrigger>
                 <AccordionContent className="text-xs leading-relaxed text-slate-700 dark:text-slate-300">
-                  <p>
-                    页面内置了多套基于 MBTI 理论的中文题库，包括不同题量的经典四维版本，以及包含 A/T 与 H/C 扩展维度的版本。每道题都会为相关维度分配权重，系统会在你答题完成后进行累加并计算百分比分布。
-                  </p>
+                    <p>
+                      页面内置了多套基于 MBTI、大五人格（OCEAN）和九型人格模型的中文题库。不同题库在题量和维度设计上有所侧重：MBTI 题库包含经典四维以及 A/T、H/C 扩展维度，大五人格题库基于 O、C、E、A、N 五维，九型题库则覆盖 1–9 九种类型能量。每道题都会为相关维度分配权重，系统会在你答题完成后进行累加并计算百分比分布。
+                    </p>
                 </AccordionContent>
               </AccordionItem>
 
@@ -2888,7 +3326,7 @@ function App(): React.ReactElement {
 
         <footer className="mt-8 border-t border-slate-200 bg-slate-50/80 py-4 text-[11px] text-slate-500 dark:border-slate-800 dark:bg-slate-950/80 dark:text-slate-400">
           <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4">
-            <span>本页面仅用于 MBTI 风格偏好自测与教学演示，不构成任何形式的专业诊断。</span>
+            <span>本页面仅用于多种人格模型（如 MBTI、大五人格、九型人格）的风格偏好自测与教学演示，不构成任何形式的专业诊断。</span>
             <span>
               当前题库为内置多套版本；如需在课程或团队中统一管理结果，可通过保存结果图片的方式进行归档。
             </span>
