@@ -284,6 +284,21 @@ const MBTI_TYPE_4_REGEX = /^[EI][SN][TF][JP]$/
 // 6 字母：前四位为经典 MBTI 类型，后两位分别为 A/T 与 H/C
 const MBTI_TYPE_6_REGEX = /^[EI][SN][TF][JP][AT][HC]$/
 
+const BASE_TITLE = "人格模型专业测试"
+const TITLE_SUMMARY_MAX_LENGTH = 15
+
+const ENNEAGRAM_SHORT_NAMES: Record<string, string> = {
+  "1": "改善者",
+  "2": "给予者",
+  "3": "成就者",
+  "4": "自我者",
+  "5": "观察者",
+  "6": "忠诚者",
+  "7": "活跃者",
+  "8": "领袖者",
+  "9": "和平者",
+}
+
 function buildNeutralPairScores(): PairScore[] {
   const pairConfigs: Array<{
     key: PairScore["key"]
@@ -1816,6 +1831,136 @@ function App(): React.ReactElement {
     [selectedBankKey, selectedModel]
   )
 
+  const buildResultSummaryForTitle = useCallback(
+    (currentResult: AnyResult | null): string | null => {
+      if (!currentResult) return null
+
+      if (currentResult.model === "MBTI") {
+        const mbti = currentResult as MBTIResult
+        const typeCode = mbti.displayType || mbti.type
+
+        let typeName: string | undefined
+
+        if (questionBank && questionBank.metadata.model === "MBTI") {
+          const bankTypes =
+            (questionBank.interpretations?.types as Record<string, TypeDescription | undefined> | undefined) ??
+            undefined
+          if (bankTypes) {
+            typeName =
+              bankTypes[mbti.displayType]?.name ??
+              bankTypes[mbti.type]?.name ??
+              bankTypes[mbti.type.slice(0, 4)]?.name
+          }
+        }
+
+        if (!typeName) {
+          const fallbackType =
+            TYPE_DESCRIPTIONS[mbti.type] ?? TYPE_DESCRIPTIONS[mbti.displayType.slice(0, 4)]
+          typeName = fallbackType?.name
+        }
+
+        const prefix = `${typeCode} `
+        if (!typeName) {
+          return prefix.trim().slice(0, TITLE_SUMMARY_MAX_LENGTH)
+        }
+
+        const maxLen = TITLE_SUMMARY_MAX_LENGTH
+        const allowedForName = maxLen - prefix.length
+        if (allowedForName <= 0) {
+          return prefix.trim().slice(0, maxLen)
+        }
+
+        const truncatedName = typeName.length > allowedForName ? typeName.slice(0, allowedForName) : typeName
+        return `${prefix}${truncatedName}`
+      }
+
+      if (currentResult.model === "BigFive") {
+        const big = currentResult as BigFiveResult
+        const order: Array<"O" | "C" | "E" | "A" | "N"> = ["O", "C", "E", "A", "N"]
+
+        const level = (percent: number): string => {
+          if (percent >= 60) return "高"
+          if (percent <= 40) return "低"
+          return "中"
+        }
+
+        const parts = order.map((key) => {
+          const trait = big.traits.find((t) => t.key === key)
+          const percent = trait ? trait.percent : 50
+          return `${key}${level(percent)}`
+        })
+
+        return parts.join("")
+      }
+
+      if (currentResult.model === "Enneagram") {
+        const enne = currentResult as EnneagramResult
+        const mainType = enne.mainType
+        const wingType = enne.wingType && enne.wingType !== enne.mainType ? enne.wingType : null
+
+        const prefix = wingType ? `${mainType}w${wingType} ` : `${mainType}型 `
+
+        let shortName: string | undefined
+
+        if (questionBank && questionBank.metadata.model === "Enneagram") {
+          const typeInterps =
+            (questionBank.interpretations?.types as Record<string, TypeDescription | undefined> | undefined) ??
+            undefined
+          const fullName = typeInterps?.[mainType]?.name
+          if (fullName) {
+            let s = fullName
+            const parenIndex = s.indexOf("（")
+            if (parenIndex >= 0) {
+              s = s.slice(0, parenIndex)
+            }
+            s = s.replace(/^\s*\d+\s*型\s*/, "")
+            s = s.trim()
+            if (s) {
+              shortName = s
+            }
+          }
+        }
+
+        if (!shortName) {
+          shortName = ENNEAGRAM_SHORT_NAMES[mainType]
+        }
+
+        const maxLen = TITLE_SUMMARY_MAX_LENGTH
+        if (!shortName) {
+          return prefix.trim().slice(0, maxLen)
+        }
+
+        const allowedForName = maxLen - prefix.length
+        if (allowedForName <= 0) {
+          return prefix.trim().slice(0, maxLen)
+        }
+
+        const truncatedName = shortName.length > allowedForName ? shortName.slice(0, allowedForName) : shortName
+        return `${prefix}${truncatedName}`
+      }
+
+      return null
+    },
+    [questionBank]
+  )
+
+  const applyTitleByResult = useCallback(
+    (currentResult: AnyResult | null) => {
+      if (typeof document === "undefined") return
+      const summary = buildResultSummaryForTitle(currentResult)
+      if (summary && summary.trim().length > 0) {
+        document.title = `${BASE_TITLE} - ${summary.trim()}`
+      } else {
+        document.title = BASE_TITLE
+      }
+    },
+    [buildResultSummaryForTitle]
+  )
+
+  useEffect(() => {
+    applyTitleByResult(result)
+  }, [result, selectedModel, applyTitleByResult])
+
   useEffect(() => {
     const banksForModel = BUILTIN_BANKS.filter((b) => b.model === selectedModel)
     const currentConfig = BUILTIN_BANKS.find((b) => b.key === selectedBankKey)
@@ -1940,6 +2085,7 @@ function App(): React.ReactElement {
 
     setResult(nextResult)
     updateUrlWithResult(nextResult, selectedBankKey)
+    applyTitleByResult(nextResult)
     setSubmitError(null)
     setCaptureHint(null)
     if (typeof window !== "undefined") {
@@ -1957,6 +2103,7 @@ function App(): React.ReactElement {
     setSubmitError(null)
     setCaptureHint(null)
     updateUrlWithResult(null, selectedBankKey)
+    applyTitleByResult(null)
     if (questionSectionRef.current) {
       questionSectionRef.current.scrollIntoView({ behavior: "smooth", block: "start" })
     }
