@@ -2,7 +2,8 @@
   "metadata": {
     "title": "MBTI 专业版 120题",
     "version": "1.0.0",
-    "language": "zh-CN"
+    "language": "zh-CN",
+    "model": "MBTI"
   },
   "dimensions": ["E", "I", "S", "N", "T", "F", "J", "P"],
   "questions": [

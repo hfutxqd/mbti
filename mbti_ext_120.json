@@ -2,7 +2,8 @@
   "metadata": {
     "title": "MBTI 扩展版 120题（含 A/T、H/C）",
     "version": "1.0.0",
-    "language": "zh-CN"
+    "language": "zh-CN",
+    "model": "MBTI"
   },
   "dimensions": [
     "E",
