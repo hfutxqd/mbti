@@ -451,18 +451,24 @@ function normalizePairPercents(
   return { leftPercent: 100 - right, rightPercent: right }
 }
 
-function updateUrlWithResult(result: AnyResult | null) {
+function updateUrlWithResult(result: AnyResult | null, bankKey?: BuiltinBankKey | null) {
   if (typeof window === "undefined") return
   const url = new URL(window.location.href)
 
-  // 清理所有维度相关参数
+  // 清理所有维度相关参数与旧的 result
   for (const key of PERCENT_PARAM_KEYS) {
     url.searchParams.delete(key)
   }
-  url.searchParams.delete("model")
+  url.searchParams.delete("result")
 
   if (result) {
+    // 统一写入当前模型
     url.searchParams.set("model", result.model)
+
+    // 写入当前题库标识，便于从结果链接恢复到对应题库
+    if (bankKey) {
+      url.searchParams.set("bank", bankKey)
+    }
 
     if (result.model === "MBTI") {
       const mbti = result as MBTIResult
@@ -515,10 +521,9 @@ function updateUrlWithResult(result: AnyResult | null) {
         url.searchParams.set(paramName, String(clampPercent(trait.percent)))
       }
     }
-  } else {
-    url.searchParams.delete("result")
   }
 
+  // 当 result 为空时，仅移除 result 与各维度参数，保留现有的 model 与 bank，便于用户回到同一题库继续作答
   window.history.pushState(null, "", url.toString())
 }
 
@@ -1232,6 +1237,52 @@ function App(): React.ReactElement {
     }
   }, [theme])
 
+  // 初始化时根据 URL 中的 model / bank 参数预设当前模型与题库选择
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      const url = new URL(window.location.href)
+      const params = url.searchParams
+      const modelParam = params.get("model")
+      const bankParam = params.get("bank")
+
+      // 若同时提供了合法的 model 与 bank，则优先按该组合设置
+      if (modelParam === "MBTI" || modelParam === "BigFive" || modelParam === "Enneagram" || modelParam === "Eysenck") {
+        const typedModel = modelParam as PersonalityModel
+        setSelectedModel(typedModel)
+
+        if (bankParam) {
+          const bankConfig = BUILTIN_BANKS.find(
+            (b) => b.key === bankParam && b.model === typedModel && b.file && !b.comingSoon
+          )
+          if (bankConfig) {
+            setSelectedBankKey(bankConfig.key)
+            return
+          }
+        }
+
+        // 未指定或未匹配到合法 bank 时，回退到该模型下第一套可用题库
+        const banksForModel = BUILTIN_BANKS.filter((b) => b.model === typedModel)
+        const firstUsable = banksForModel.find((b) => b.file && !b.comingSoon)
+        if (firstUsable) {
+          setSelectedBankKey(firstUsable.key)
+        }
+        return
+      }
+
+      // 仅提供 bank 参数时，根据 bank 反推模型
+      if (!modelParam && bankParam) {
+        const bankConfig = BUILTIN_BANKS.find((b) => b.key === bankParam && b.file && !b.comingSoon)
+        if (bankConfig) {
+          setSelectedModel(bankConfig.model)
+          setSelectedBankKey(bankConfig.key)
+        }
+      }
+    } catch {
+      // 忽略不合法的 URL
+    }
+  }, [])
+
   useEffect(() => {
     if (typeof window === "undefined") return
     try {
@@ -1394,9 +1445,21 @@ function App(): React.ReactElement {
       }
 
       setSelectedModel("BigFive")
-      const defaultBigFiveBank = BUILTIN_BANKS.find((b) => b.model === "BigFive" && !b.comingSoon)
-      if (defaultBigFiveBank) {
-        setSelectedBankKey(defaultBigFiveBank.key)
+
+      const bankParam = params.get("bank")
+      const bigFiveBanks = BUILTIN_BANKS.filter((b) => b.model === "BigFive" && !b.comingSoon && b.file)
+      let bankKeyToUse: BuiltinBankKey | null = null
+      if (bankParam) {
+        const matched = bigFiveBanks.find((b) => b.key === bankParam)
+        if (matched) {
+          bankKeyToUse = matched.key
+        }
+      }
+      if (!bankKeyToUse && bigFiveBanks.length > 0) {
+        bankKeyToUse = bigFiveBanks[0].key
+      }
+      if (bankKeyToUse) {
+        setSelectedBankKey(bankKeyToUse)
       }
 
       setResult(placeholderResult)
@@ -1426,10 +1489,15 @@ function App(): React.ReactElement {
     if (typeof window !== "undefined") {
       try {
         const url = new URL(window.location.href)
-        const rawType = url.searchParams.get("result")
-        if (rawType) {
-          const upper = rawType.toUpperCase()
-          if (MBTI_TYPE_4_REGEX.test(upper) || MBTI_TYPE_6_REGEX.test(upper)) {
+        const params = url.searchParams
+        const rawResult = params.get("result")
+        const modelParam = params.get("model")
+
+        if (rawResult) {
+          const upper = rawResult.toUpperCase()
+          const isMbtiResult = MBTI_TYPE_4_REGEX.test(upper) || MBTI_TYPE_6_REGEX.test(upper)
+          const isBigFiveResult = upper === "OCEAN" || modelParam === "BigFive"
+          if (isMbtiResult || isBigFiveResult) {
             return
           }
         }
@@ -1529,6 +1597,11 @@ function App(): React.ReactElement {
   const availableBanks = useMemo(
     () => BUILTIN_BANKS.filter((b) => b.model === selectedModel),
     [selectedModel]
+  )
+
+  const activeBankConfig = useMemo(
+    () => BUILTIN_BANKS.find((b) => b.key === selectedBankKey && b.model === selectedModel),
+    [selectedBankKey, selectedModel]
   )
 
   useEffect(() => {
@@ -1652,7 +1725,7 @@ function App(): React.ReactElement {
     }
 
     setResult(nextResult)
-    updateUrlWithResult(nextResult)
+    updateUrlWithResult(nextResult, selectedBankKey)
     setSubmitError(null)
     setCaptureHint(null)
     if (typeof window !== "undefined") {
@@ -1669,7 +1742,7 @@ function App(): React.ReactElement {
     setResult(null)
     setSubmitError(null)
     setCaptureHint(null)
-    updateUrlWithResult(null)
+    updateUrlWithResult(null, selectedBankKey)
     if (questionSectionRef.current) {
       questionSectionRef.current.scrollIntoView({ behavior: "smooth", block: "start" })
     }
@@ -1860,7 +1933,11 @@ function App(): React.ReactElement {
             </div>
             <div className="flex flex-col items-end gap-2 text-xs text-slate-500 dark:text-slate-400">
               <div className="flex flex-wrap items-center gap-2">
-                <span>题库：{bigFiveResult.bankMetadata.title}</span>
+                <span>模型：OCEAN（大五人格）</span>
+                <span>
+                  · 题库：
+                  {activeBankConfig?.label ?? bigFiveResult.bankMetadata.title}
+                </span>
                 <span>· 版本：{bigFiveResult.bankMetadata.version}</span>
                 <span>
                   · 已答：{bigFiveResult.answeredCount}/{bigFiveResult.totalQuestions}
@@ -2442,57 +2519,60 @@ function App(): React.ReactElement {
             <section ref={resultSectionRef} className="space-y-4">
               {mbtiResult && (
                 <Card className="border-slate-200 bg-white/90 shadow-sm dark:border-slate-800 dark:bg-slate-950/80">
-+                <CardHeader className="pb-3">
-
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <CardTitle className="flex items-baseline gap-2 text-lg sm:text-xl">
-                        <span>你的 MBTI 类型：</span>
-                        <span className="font-mono text-2xl tracking-[0.2em] text-indigo-600 dark:text-indigo-300">
-                          {mbtiResult.displayType}
-                        </span>
-                        {activeTypeInfo && (
-                          <Badge variant="outline" className="text-xs font-normal">
-                            {activeTypeInfo.name}
-                          </Badge>
-                        )}
-                      </CardTitle>
-                      <CardDescription className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                        基于当前题库与作答情况计算的四维偏好比例，仅代表在本测评框架下的倾向分布。
-                      </CardDescription>
-                      {typeImage && (
-                        <div className="mt-4 flex justify-center">
-                          <div className="h-24 w-24 sm:h-28 sm:w-28 md:h-32 md:w-32 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900">
-                            <img
-                              src={typeImage}
-                              alt={`${mbtiResult.type} 类型示意图`}
-                              className="h-full w-full object-contain"
-                            />
+                  <CardHeader className="pb-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <CardTitle className="flex items-baseline gap-2 text-lg sm:text-xl">
+                          <span>你的 MBTI 类型：</span>
+                          <span className="font-mono text-2xl tracking-[0.2em] text-indigo-600 dark:text-indigo-300">
+                            {mbtiResult.displayType}
+                          </span>
+                          {activeTypeInfo && (
+                            <Badge variant="outline" className="text-xs font-normal">
+                              {activeTypeInfo.name}
+                            </Badge>
+                          )}
+                        </CardTitle>
+                        <CardDescription className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                          基于当前题库与作答情况计算的四维偏好比例，仅代表在本测评框架下的倾向分布。
+                        </CardDescription>
+                        {typeImage && (
+                          <div className="mt-4 flex justify-center">
+                            <div className="h-24 w-24 sm:h-28 sm:w-28 md:h-32 md:w-32 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900">
+                              <img
+                                src={typeImage}
+                                alt={`${mbtiResult.type} 类型示意图`}
+                                className="h-full w-full object-contain"
+                              />
+                            </div>
                           </div>
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-col items-end gap-2 text-xs text-slate-500 dark:text-slate-400">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span>题库：{mbtiResult.bankMetadata.title}</span>
-                        <span>· 版本：{mbtiResult.bankMetadata.version}</span>
-                        <span>
-                          · 已答：{mbtiResult.answeredCount}/{mbtiResult.totalQuestions}
-                        </span>
+                        )}
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1"
-                        onClick={handleReset}
-                        aria-label="重新测试，返回答题模式"
-                      >
-                        <RefreshCw className="h-3.5 w-3.5" />
-                        重新测试
-                      </Button>
+                      <div className="flex flex-col items-end gap-2 text-xs text-slate-500 dark:text-slate-400">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span>模型：MBTI</span>
+                          <span>
+                            · 题库：
+                            {activeBankConfig?.label ?? mbtiResult.bankMetadata.title}
+                          </span>
+                          <span>· 版本：{mbtiResult.bankMetadata.version}</span>
+                          <span>
+                            · 已答：{mbtiResult.answeredCount}/{mbtiResult.totalQuestions}
+                          </span>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1"
+                          onClick={handleReset}
+                          aria-label="重新测试，返回答题模式"
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" />
+                          重新测试
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                </CardHeader>
+                  </CardHeader>
 
                 <CardContent className="grid gap-6 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1.1fr)]">
                   <div className="space-y-4">
