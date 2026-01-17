@@ -47,13 +47,31 @@ import ENTJImage from "@/assets/mbti/ENTJ.svg"
 
 // ================= 类型定义 =================
 
-type PersonalityModel = "MBTI" | "BigFive" | "Enneagram" | "Eysenck"
+type PersonalityModel = "MBTI" | "BigFive" | "Enneagram" | "Eysenck" | "FPA"
 
 type DimensionKey = "E" | "I" | "S" | "N" | "T" | "F" | "J" | "P" | "A" | "Turb" | "H" | "C"
 
 const CORE_DIM_KEYS: DimensionKey[] = ["E", "I", "S", "N", "T", "F", "J", "P"]
 const EXT_DIM_KEYS: DimensionKey[] = ["A", "Turb", "H", "C"]
 const ALL_DIM_KEYS: DimensionKey[] = [...CORE_DIM_KEYS, ...EXT_DIM_KEYS]
+
+const FPA_DIM_KEYS = ["R", "Y", "B", "G"] as const
+type FPADimKey = (typeof FPA_DIM_KEYS)[number]
+
+const FPA_LABEL_MAP: Record<FPADimKey, string> = {
+  R: "推动 (R)",
+  Y: "表达 (Y)",
+  B: "规则 (B)",
+  G: "支持 (G)",
+}
+
+const FPA_COLOR_NAME_MAP: Record<FPADimKey, string> = {
+  R: "红",
+  Y: "黄",
+  B: "蓝",
+  G: "绿",
+}
+
 const QUESTIONS_PER_GROUP = 10
 
 type BuiltinBankKey =
@@ -67,6 +85,7 @@ type BuiltinBankKey =
   | "bigfive-pro-240"
   | "enneagram-simple-36"
   | "enneagram-pro-108"
+  | "fpa-simple-30"
   | "eysenck-epq-short"
   | "eysenck-epq-pro"
 
@@ -135,6 +154,14 @@ const BUILTIN_BANKS: BuiltinBankConfig[] = [
     label: "大五人格 专业版 240题",
     description: "覆盖更丰富的生活与工作情境，用于深入刻画 O/C/E/A/N 五维轮廓。",
     file: "/bigfive_pro_240.json",
+  },
+  {
+    key: "fpa-simple-30",
+    model: "FPA",
+    label: "FPA 性格色彩 30题",
+    description:
+      "四色维度：推动 (R) / 表达 (Y) / 规则 (B) / 支持 (G)，适合快速了解性格色彩分布。",
+    file: "/fpa_simple_30.json",
   },
   {
     key: "enneagram-simple-36",
@@ -239,6 +266,19 @@ interface BigFiveResult extends BaseResult {
   traits: BigFiveTraitScore[]
 }
 
+interface FPATraitScore {
+  key: FPADimKey
+  label: string
+  score: number
+  percent: number
+}
+
+interface FPAResult extends BaseResult {
+  model: "FPA"
+  traits: FPATraitScore[]
+  dominantColor: FPADimKey
+}
+
 interface EnneagramTraitScore {
   key: string
   label: string
@@ -253,7 +293,7 @@ interface EnneagramResult extends BaseResult {
   wingType: string | null
 }
 
-type AnyResult = MBTIResult | BigFiveResult | EnneagramResult
+type AnyResult = MBTIResult | BigFiveResult | FPAResult | EnneagramResult
 
 interface TypeDescription {
   name: string
@@ -435,6 +475,10 @@ const PERCENT_PARAM_KEYS = [
   "p_turb",
   "p_h",
   "p_c",
+  "p_r",
+  "p_y",
+  "p_b",
+  "p_g",
   "p_1",
   "p_2",
   "p_3",
@@ -558,6 +602,29 @@ function updateUrlWithResult(result: AnyResult | null, bankKey?: BuiltinBankKey 
         if (!paramName) continue
         url.searchParams.set(paramName, String(clampPercent(trait.percent)))
       }
+    } else if (result.model === "FPA") {
+      const fpa = result as FPAResult
+      url.searchParams.set("result", "FPA")
+
+      for (const trait of fpa.traits) {
+        let paramName: PercentParamKey | null = null
+        switch (trait.key) {
+          case "R":
+            paramName = "p_r"
+            break
+          case "Y":
+            paramName = "p_y"
+            break
+          case "B":
+            paramName = "p_b"
+            break
+          case "G":
+            paramName = "p_g"
+            break
+        }
+        if (!paramName) continue
+        url.searchParams.set(paramName, String(clampPercent(trait.percent)))
+      }
     } else if (result.model === "Enneagram") {
       const enne = result as EnneagramResult
       url.searchParams.set("result", "ENNEAGRAM")
@@ -603,8 +670,14 @@ function validateQuestionBank(raw: unknown): { ok: true; data: QuestionBank } | 
   }
 
   let model: PersonalityModel
-  if (rawModel === "MBTI" || rawModel === "BigFive" || rawModel === "Enneagram" || rawModel === "Eysenck") {
-    model = rawModel
+  if (
+    rawModel === "MBTI" ||
+    rawModel === "BigFive" ||
+    rawModel === "Enneagram" ||
+    rawModel === "Eysenck" ||
+    rawModel === "FPA"
+  ) {
+    model = rawModel as PersonalityModel
   } else {
     return { ok: false, error: `不支持的模型类型：${rawModel}` }
   }
@@ -631,6 +704,12 @@ function validateQuestionBank(raw: unknown): { ok: true; data: QuestionBank } | 
     const hasAll = required.every((d) => dimStrings.includes(d))
     if (!hasAll) {
       return { ok: false, error: "九型人格题库的 dimensions 必须至少包含 1-9" }
+    }
+  } else if (model === "FPA") {
+    const required = ["R", "Y", "B", "G"]
+    const hasAll = required.every((d) => dimStrings.includes(d))
+    if (!hasAll) {
+      return { ok: false, error: "FPA 题库的 dimensions 必须至少包含 R、Y、B、G" }
     }
   } else if (model === "Eysenck") {
     const required = ["E", "N", "P", "L"]
@@ -1220,6 +1299,78 @@ function computeBigFiveResult(bank: QuestionBank, answers: Record<string, number
   }
 }
 
+function computeFpaResult(bank: QuestionBank, answers: Record<string, number>): FPAResult {
+  const dimKeys: FPADimKey[] = ["R", "Y", "B", "G"]
+
+  const scores: Record<FPADimKey, number> = {
+    R: 0,
+    Y: 0,
+    B: 0,
+    G: 0,
+  }
+
+  const maxScores: Record<FPADimKey, number> = {
+    R: 0,
+    Y: 0,
+    B: 0,
+    G: 0,
+  }
+
+  // 计算每个维度理论最高分（假设每题都选该维度权重最大的选项）
+  for (const q of bank.questions) {
+    for (const key of dimKeys) {
+      let localMax = 0
+      for (const choice of q.choices) {
+        const v = choice.weights[key] ?? 0
+        if (v > localMax) {
+          localMax = v
+        }
+      }
+      maxScores[key] += localMax
+    }
+  }
+
+  let answeredCount = 0
+
+  for (const q of bank.questions) {
+    const choiceIndex = answers[q.id]
+    if (choiceIndex === undefined || choiceIndex === null) continue
+    const choice = q.choices[choiceIndex]
+    if (!choice) continue
+    answeredCount++
+    for (const key of dimKeys) {
+      const v = choice.weights[key] ?? 0
+      scores[key] += v
+    }
+  }
+
+  const traits: FPATraitScore[] = dimKeys.map((key) => {
+    const score = scores[key]
+    const max = maxScores[key]
+    const percent = max > 0 ? Math.round((score / max) * 100) : 0
+    const label = FPA_LABEL_MAP[key]
+    return {
+      key,
+      label,
+      score,
+      percent,
+    }
+  })
+
+  const sorted = [...traits].sort((a, b) => b.percent - a.percent)
+  const dominantColor: FPADimKey = sorted[0]?.key ?? "R"
+
+  return {
+    model: "FPA",
+    traits,
+    dominantColor,
+    answeredCount,
+    totalQuestions: bank.questions.length,
+    bankMetadata: bank.metadata,
+    createdAt: new Date().toISOString(),
+  }
+}
+
 function computeEnneagramResult(bank: QuestionBank, answers: Record<string, number>): EnneagramResult {
   const dimKeys: string[] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
 
@@ -1380,7 +1531,13 @@ function App(): React.ReactElement {
       const bankParam = params.get("bank")
 
       // 若同时提供了合法的 model 与 bank，则优先按该组合设置
-      if (modelParam === "MBTI" || modelParam === "BigFive" || modelParam === "Enneagram" || modelParam === "Eysenck") {
+      if (
+        modelParam === "MBTI" ||
+        modelParam === "BigFive" ||
+        modelParam === "Enneagram" ||
+        modelParam === "Eysenck" ||
+        modelParam === "FPA"
+      ) {
         const typedModel = modelParam as PersonalityModel
         setSelectedModel(typedModel)
 
@@ -1695,6 +1852,92 @@ function App(): React.ReactElement {
     }
   }, [])
 
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      const url = new URL(window.location.href)
+      const params = url.searchParams
+      const modelParam = params.get("model")
+      const rawResult = params.get("result")
+      const upperResult = rawResult ? rawResult.toUpperCase() : ""
+
+      const isFpa = modelParam === "FPA" || (!modelParam && upperResult === "FPA")
+      if (!isFpa) {
+        return
+      }
+
+      const dimKeys: FPADimKey[] = ["R", "Y", "B", "G"]
+      const traits: FPATraitScore[] = dimKeys.map((key) => {
+        let paramName: PercentParamKey | null = null
+        switch (key) {
+          case "R":
+            paramName = "p_r"
+            break
+          case "Y":
+            paramName = "p_y"
+            break
+          case "B":
+            paramName = "p_b"
+            break
+          case "G":
+            paramName = "p_g"
+            break
+        }
+        const raw = paramName ? params.get(paramName) : null
+        const percent = raw != null ? clampPercent(Number(raw)) : 0
+        return {
+          key,
+          label: FPA_LABEL_MAP[key],
+          score: percent,
+          percent,
+        }
+      })
+
+      const sorted = [...traits].sort((a, b) => b.percent - a.percent)
+      const dominantColor: FPADimKey = sorted[0]?.key ?? "R"
+
+      const placeholderMetadata: QuestionBankMetadata = {
+        title: "外部结果（FPA 性格色彩维度占比）",
+        version: "1.0.0",
+        language: "zh-CN",
+        model: "FPA",
+      }
+
+      const placeholderResult: FPAResult = {
+        model: "FPA",
+        traits,
+        dominantColor,
+        answeredCount: 0,
+        totalQuestions: 0,
+        bankMetadata: placeholderMetadata,
+        createdAt: new Date().toISOString(),
+      }
+
+      setSelectedModel("FPA")
+
+      const bankParam = params.get("bank")
+      const fpaBanks = BUILTIN_BANKS.filter((b) => b.model === "FPA" && !b.comingSoon && b.file)
+      let bankKeyToUse: BuiltinBankKey | null = null
+      if (bankParam) {
+        const matched = fpaBanks.find((b) => b.key === bankParam)
+        if (matched) {
+          bankKeyToUse = matched.key
+        }
+      }
+      if (!bankKeyToUse && fpaBanks.length > 0) {
+        bankKeyToUse = fpaBanks[0].key
+      }
+      if (bankKeyToUse) {
+        setSelectedBankKey(bankKeyToUse)
+      }
+
+      setResult(placeholderResult)
+      setHasStarted(true)
+    } catch {
+      // 忽略不合法的 URL
+    }
+  }, [])
+
   const applyNewBank = useCallback(
     (bank: QuestionBank) => {
       setQuestionBank(bank)
@@ -1724,7 +1967,8 @@ function App(): React.ReactElement {
           const isMbtiResult = MBTI_TYPE_4_REGEX.test(upper) || MBTI_TYPE_6_REGEX.test(upper)
           const isBigFiveResult = upper === "OCEAN" || modelParam === "BigFive"
           const isEnneagramResult = upper === "ENNEAGRAM" || modelParam === "Enneagram"
-          if (isMbtiResult || isBigFiveResult || isEnneagramResult) {
+          const isFpaResult = upper === "FPA" || modelParam === "FPA"
+          if (isMbtiResult || isBigFiveResult || isEnneagramResult || isFpaResult) {
             return
           }
         }
@@ -1891,6 +2135,30 @@ function App(): React.ReactElement {
         })
 
         return parts.join("")
+      }
+
+      if (currentResult.model === "FPA") {
+        const fpa = currentResult as FPAResult
+        const order: FPADimKey[] = ["R", "Y", "B", "G"]
+
+        const level = (percent: number): string => {
+          if (percent >= 60) return "高"
+          if (percent <= 40) return "低"
+          return "中"
+        }
+
+        const parts = order.map((key) => {
+          const trait = fpa.traits.find((t) => t.key === key)
+          const percent = trait ? trait.percent : 50
+          const colorName = FPA_COLOR_NAME_MAP[key]
+          return `${colorName}${level(percent)}`
+        })
+
+        const summary = parts.join("")
+        if (summary.length > TITLE_SUMMARY_MAX_LENGTH) {
+          return summary.slice(0, TITLE_SUMMARY_MAX_LENGTH)
+        }
+        return summary
       }
 
       if (currentResult.model === "Enneagram") {
@@ -2076,6 +2344,8 @@ function App(): React.ReactElement {
       nextResult = computeMbtiResult(questionBank, answers)
     } else if (questionBank.metadata.model === "BigFive") {
       nextResult = computeBigFiveResult(questionBank, answers)
+    } else if (questionBank.metadata.model === "FPA") {
+      nextResult = computeFpaResult(questionBank, answers)
     } else if (questionBank.metadata.model === "Enneagram") {
       nextResult = computeEnneagramResult(questionBank, answers)
     } else {
@@ -2135,6 +2405,9 @@ function App(): React.ReactElement {
         label = (result as MBTIResult).displayType
       } else if (result.model === "BigFive") {
         label = "OCEAN"
+      } else if (result.model === "FPA") {
+        const fpa = result as FPAResult
+        label = `FPA-${fpa.dominantColor}`
       } else if (result.model === "Enneagram") {
         const enne = result as EnneagramResult
         label =
@@ -2169,6 +2442,7 @@ function App(): React.ReactElement {
 
   const mbtiResult = result && result.model === "MBTI" ? (result as MBTIResult) : null
   const bigFiveResult = result && result.model === "BigFive" ? (result as BigFiveResult) : null
+  const fpaResult = result && result.model === "FPA" ? (result as FPAResult) : null
   const enneagramResult = result && result.model === "Enneagram" ? (result as EnneagramResult) : null
 
   const activeTypeInfo = useMemo(() => {
@@ -2229,6 +2503,21 @@ function App(): React.ReactElement {
     [bigFiveResult, questionBank]
   )
 
+  const fpaTraitInterpretations = useMemo(
+    () => {
+      if (!fpaResult) return []
+      const traitInterps =
+        questionBank && questionBank.metadata.model === "FPA"
+          ? questionBank.interpretations?.traits ?? {}
+          : {}
+      return fpaResult.traits.map((t) => ({
+        trait: t,
+        interp: (traitInterps as Record<string, TraitInterpretation | undefined>)[t.key],
+      }))
+    },
+    [fpaResult, questionBank]
+  )
+
   const renderQuestionCard = (q: Question, globalIndex: number) => {
     const selectedIndex = answers[q.id]
 
@@ -2280,6 +2569,290 @@ function App(): React.ReactElement {
               )
             })}
           </RadioGroup>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const renderFpaResult = () => {
+    if (!fpaResult) return null
+
+    const sortedTraits = [...fpaResult.traits].sort((a, b) => b.percent - a.percent)
+    const mainTrait = sortedTraits[0]
+    const secondaryTrait = sortedTraits[1]
+    const mainColorName = mainTrait ? FPA_COLOR_NAME_MAP[mainTrait.key] : ""
+    const secondaryColorName = secondaryTrait ? FPA_COLOR_NAME_MAP[secondaryTrait.key] : ""
+
+    const colorBarClassMap: Record<FPADimKey, string> = {
+      R: "bg-red-500",
+      Y: "bg-amber-400",
+      B: "bg-sky-500",
+      G: "bg-emerald-500",
+    }
+
+    const level = (percent: number): string => {
+      if (percent >= 60) return "高"
+      if (percent <= 40) return "低"
+      return "中"
+    }
+
+    return (
+      <Card className="border-slate-200 bg-white/90 shadow-sm dark:border-slate-800 dark:bg-slate-950/80">
+        <CardHeader className="pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-baseline gap-2 text-lg sm:text-xl">
+                <span>你的 FPA 性格色彩：</span>
+                <span className="font-mono text-2xl tracking-[0.2em] text-indigo-600 dark:text-indigo-300">
+                  {mainColorName ? `主${mainColorName}` : "--"}
+                </span>
+                {secondaryColorName && (
+                  <Badge variant="outline" className="text-xs font-normal">
+                    次{secondaryColorName}
+                  </Badge>
+                )}
+              </CardTitle>
+              <CardDescription className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                基于当前题库与作答情况，对推动 (R)、表达 (Y)、规则 (B)、支持 (G) 四种色彩能量进行百分比评估，并给出主色与次高色。
+              </CardDescription>
+            </div>
+            <div className="flex flex-col items-end gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <div className="flex flex-wrap items-center gap-2">
+                <span>模型：FPA 性格色彩</span>
+                <span>
+                  · 题库：
+                  {activeBankConfig?.label ?? fpaResult.bankMetadata.title}
+                </span>
+                <span>· 版本：{fpaResult.bankMetadata.version}</span>
+                <span>
+                  · 已答：{fpaResult.answeredCount}/{fpaResult.totalQuestions}
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1"
+                onClick={handleReset}
+                aria-label="重新测试 FPA 性格色彩，返回答题模式"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                重新测试
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent className="grid gap-6 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1.1fr)]">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-300">
+                <span>四色维度分布</span>
+                <span className="text-[11px]">数值越高，代表该色彩能量在本次测评中的倾向越明显。</span>
+              </div>
+              <div className="space-y-2 text-xs text-slate-700 dark:text-slate-300">
+                {fpaResult.traits.map((t) => {
+                  const isMain = mainTrait && t.key === mainTrait.key
+                  const isSecondary = secondaryTrait && t.key === secondaryTrait.key
+                  const barColor = colorBarClassMap[t.key]
+                  return (
+                    <div
+                      key={t.key}
+                      className="flex flex-col gap-1 rounded-md bg-slate-50 px-3 py-2 dark:bg-slate-900/70"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span
+                          className={`font-medium ${
+                            isMain ? "text-indigo-700 dark:text-indigo-200" : isSecondary ? "text-sky-700 dark:text-sky-200" : ""
+                          }`}
+                        >
+                          {t.label}
+                          {isMain ? "（主色）" : isSecondary ? "（次高色）" : ""}
+                        </span>
+                        <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                          {t.percent}%
+                        </span>
+                      </div>
+                      <div className="flex h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                        <div className={`h-full ${barColor}`} style={{ width: `${t.percent}%` }} />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <Card className="border-slate-200 bg-slate-50/80 shadow-none dark:border-slate-700 dark:bg-slate-900/70">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">总体特征与简要说明</CardTitle>
+                <CardDescription className="text-xs text-slate-500 dark:text-slate-400">
+                  结合四个色彩维度的高低分布，概览你在推动、表达、规则与支持上的自然偏好。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2 text-xs leading-relaxed text-slate-700 dark:text-slate-300">
+                <p>
+                  本次测评中，你的主色为
+                  {mainColorName ? ` ${mainColorName}（${mainTrait?.label ?? ""}）` : " --"}
+                  ，
+                  {secondaryColorName ? `次色为 ${secondaryColorName}（${secondaryTrait?.label ?? ""}）` : "次色暂不明显"}
+                  。主色代表你在做选择和表达自己时更自然使用的能量，次色则为整体风格带来补充与修饰。
+                </p>
+                <ul className="list-disc space-y-1 pl-4">
+                  {fpaTraitInterpretations.map(({ trait, interp }) => {
+                    if (!interp) return null
+                    const lvl = level(trait.percent)
+                    let text: string
+                    if (lvl === "高") {
+                      text = interp.high
+                    } else if (lvl === "低") {
+                      text = interp.low
+                    } else {
+                      text = `在 ${trait.label} 上，你整体偏向中间区间，可根据情境灵活切换不同风格。`
+                    }
+                    return (
+                      <li key={trait.key}>
+                        [{trait.label}] {text}
+                      </li>
+                    )
+                  })}
+                </ul>
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-200 bg-slate-50/70 shadow-none dark:border-slate-700 dark:bg-slate-900/70">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">职业与工作风格</CardTitle>
+                <CardDescription className="text-xs text-slate-500 dark:text-slate-400">
+                  聚焦主色与次高色，提示你在工作中更自然的角色与协作方式。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="text-xs leading-relaxed text-slate-700 dark:text-slate-300">
+                <ul className="list-disc space-y-1 pl-4">
+                  {fpaTraitInterpretations.map(({ trait, interp }) => {
+                    if (!interp?.tips || interp.tips.length === 0) return null
+                    const isMain = mainTrait && trait.key === mainTrait.key
+                    const isSecondary = secondaryTrait && trait.key === secondaryTrait.key
+                    if (!isMain && !isSecondary) return null
+                    const tip = interp.tips[0]
+                    return (
+                      <li key={trait.key}>
+                        [{trait.label}] {tip}
+                      </li>
+                    )
+                  })}
+                  {!fpaTraitInterpretations.some(({ trait }) => {
+                    return (
+                      (mainTrait && trait.key === mainTrait.key) ||
+                      (secondaryTrait && trait.key === secondaryTrait.key)
+                    )
+                  }) && (
+                    <li>
+                      当前题库对职业与工作风格暂无额外提示，你可以结合主色与次高色，思考自己在项目推进、协作分工和决策方式上的自然偏好。
+                    </li>
+                  )}
+                </ul>
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-200 bg-slate-50/70 shadow-none dark:border-slate-700 dark:bg-slate-900/70">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">人际与沟通</CardTitle>
+                <CardDescription className="text-xs text-slate-500 dark:text-slate-400">
+                  根据四色组合，提示你在人际互动与日常沟通中的自然风格。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="text-xs leading-relaxed text-slate-700 dark:text-slate-300">
+                <p>
+                  在沟通中，
+                  {fpaResult.traits
+                    .filter((t) => t.percent >= 60)
+                    .map((t, idx) => {
+                      const name = FPA_COLOR_NAME_MAP[t.key]
+                      const piece =
+                        t.key === "R"
+                          ? `${name}向偏高的人更习惯直接表达立场、迅速给出结论；`
+                          : t.key === "Y"
+                            ? `${name}向偏高的人喜欢通过故事和情绪带动氛围，更愿意主动开启话题；`
+                            : t.key === "B"
+                              ? `${name}向偏高的人会先确认事实与逻辑，偏好有结构、有依据的讨论；`
+                              : `${name}向偏高的人更在意关系的和谐与稳定，常通过倾听与照顾维系连接；`
+                      return (
+                        <span key={t.key}>{idx > 0 ? "" : ""}{piece}</span>
+                      )
+                    })}
+                  {fpaResult.traits.every((t) => t.percent < 60) &&
+                    "你的四色分布整体较为均衡，可以根据不同对象与情境灵活切换表达方式。"}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-200 bg-slate-50/70 shadow-none dark:border-slate-700 dark:bg-slate-900/70">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">需要留意的地方</CardTitle>
+                <CardDescription className="text-xs text-slate-500 dark:text-slate-400">
+                  并非缺点，而是在某些色彩特别高或特别低时，容易出现的惯性与盲区。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="text-xs leading-relaxed text-slate-700 dark:text-slate-300">
+                {(() => {
+                  const items: JSX.Element[] = []
+                  for (const { trait, interp } of fpaTraitInterpretations) {
+                    if (!interp) continue
+                    const p = trait.percent
+                    if (p >= 70) {
+                      const tip = interp.tips?.[0] ?? interp.high
+                      items.push(
+                        <li key={`${trait.key}-high`}>
+                          [{trait.label}] {tip}
+                        </li>
+                      )
+                    } else if (p <= 30) {
+                      const tip = interp.tips?.[1] ?? interp.low
+                      items.push(
+                        <li key={`${trait.key}-low`}>
+                          [{trait.label}] {tip}
+                        </li>
+                      )
+                    }
+                  }
+                  if (items.length === 0) {
+                    return (
+                      <p>
+                        当前暂无特别需要留意的色彩偏高或偏低维度，你可以在未来一段时间里，对照结果观察自己在高压、冲突或重要场合下是否会重复某些固定反应模式。
+                      </p>
+                    )
+                  }
+                  return <ul className="list-disc space-y-1 pl-4">{items}</ul>
+                })()}
+              </CardContent>
+            </Card>
+
+            <Card className="border-dashed border-slate-200 bg-slate-50/60 shadow-none dark:border-slate-700 dark:bg-slate-900/60">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">结果导出与分享</CardTitle>
+                <CardDescription className="text-xs text-slate-500 dark:text-slate-400">
+                  生成当前结果截图，便于在团队 workshop、教练会谈或个人记录中保存与回顾。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 text-xs">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    className="gap-1"
+                    onClick={handleCaptureImage}
+                    aria-label="将 FPA 性格色彩结果保存为 PNG 图片"
+                  >
+                    <Image className="h-3.5 w-3.5" />
+                    保存结果图片（PNG）
+                  </Button>
+                </div>
+                {captureHint && (
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">{captureHint}</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </CardContent>
       </Card>
     )
@@ -2730,7 +3303,7 @@ function App(): React.ReactElement {
               <div>
                 <div className="text-sm font-semibold sm:text-base">人格模型专业测试</div>
                 <div className="text-xs text-slate-500 dark:text-slate-400">
-                  支持 MBTI / 大五人格 / 九型人格 / 艾森克 EPQ
+                  支持 MBTI / 大五人格 / 九型人格 / 艾森克 EPQ / FPA 性格色彩
                 </div>
               </div>
             </div>
@@ -2769,11 +3342,11 @@ function App(): React.ReactElement {
                 <CardTitle className="flex items-center justify-between gap-3">
                   <span className="text-lg sm:text-xl">人格模型专业测试</span>
                   <Badge className="border-indigo-400/70 bg-indigo-50 text-[10px] font-medium text-indigo-700 dark:border-indigo-500/70 dark:bg-indigo-950/60 dark:text-indigo-200" variant="outline">
-                    支持 MBTI / 大五人格 / 九型人格 / 艾森克 EPQ
+                    支持 MBTI / 大五人格 / 九型人格 / 艾森克 EPQ / FPA 性格色彩
                   </Badge>
                 </CardTitle>
                 <CardDescription className="text-xs leading-relaxed text-slate-600 sm:text-sm dark:text-slate-400">
-                  本页面提供多种人格模型的自测工具，目前已开放 MBTI、大五人格与九型人格题库，并预留艾森克 EPQ 的入口。
+                  本页面提供多种人格模型的自测工具，目前已开放 MBTI、大五人格、九型人格与 FPA 性格色彩题库，并预留艾森克 EPQ 的入口。
                   题目基于结构化问卷设计，完成作答后可获取维度百分比与简要中文解读。
                 </CardDescription>
               </CardHeader>
@@ -2821,12 +3394,15 @@ function App(): React.ReactElement {
                       <ToggleGroupItem value="Enneagram" className="px-2 py-1 text-[11px]">
                         九型人格
                       </ToggleGroupItem>
+                      <ToggleGroupItem value="FPA" className="px-2 py-1 text-[11px]">
+                        FPA 性格色彩
+                      </ToggleGroupItem>
                       <ToggleGroupItem value="Eysenck" className="px-2 py-1 text-[11px]">
                         艾森克 EPQ
                       </ToggleGroupItem>
                     </ToggleGroup>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                      当前已开放 MBTI、大五人格和九型人格测评，艾森克 EPQ 将在后续版本逐步上线。
+                      当前已开放 MBTI、大五人格、九型人格和 FPA 性格色彩测评，艾森克 EPQ 将在后续版本逐步上线。
                     </p>
                   </div>
 
@@ -2868,7 +3444,9 @@ function App(): React.ReactElement {
                           ? "可选择大五人格简化版 60题或专业版 240题，题目均基于 OCEAN 五维模型。"
                           : selectedModel === "Enneagram"
                             ? "可选择九型人格简化版 36题或专业版 108题，适合快速了解或深入探索九型人格九种核心能量。"
-                            : "当前模型题库处于建设中，题目将于后续版本上线。"}
+                            : selectedModel === "FPA"
+                              ? "可选择 FPA 性格色彩 30题，适合快速了解推动/表达/规则/支持四种色彩能量的分布。"
+                              : "当前模型题库处于建设中，题目将于后续版本上线。"}
                     </p>
                   </div>
                 </div>
@@ -3400,6 +3978,7 @@ function App(): React.ReactElement {
               </Card>
               )}
               {bigFiveResult && renderBigFiveResult()}
+              {fpaResult && renderFpaResult()}
               {enneagramResult && renderEnneagramResult()}
             </section>
           )}
@@ -3416,7 +3995,7 @@ function App(): React.ReactElement {
                 </AccordionTrigger>
                 <AccordionContent className="text-xs leading-relaxed text-slate-700 dark:text-slate-300">
                     <p>
-                      页面内置了多套基于 MBTI、大五人格（OCEAN）和九型人格模型的中文题库。不同题库在题量和维度设计上有所侧重：MBTI 题库包含经典四维以及 A/T、H/C 扩展维度，大五人格题库基于 O、C、E、A、N 五维，九型题库则覆盖 1–9 九种类型能量。每道题都会为相关维度分配权重，系统会在你答题完成后进行累加并计算百分比分布。
+                      页面内置了多套基于 MBTI、大五人格（OCEAN）、九型人格和 FPA 性格色彩模型的中文题库。不同题库在题量和维度设计上有所侧重：MBTI 题库包含经典四维以及 A/T、H/C 扩展维度，大五人格题库基于 O、C、E、A、N 五维，九型题库则覆盖 1–9 九种类型能量。每道题都会为相关维度分配权重，系统会在你答题完成后进行累加并计算百分比分布。
                     </p>
                 </AccordionContent>
               </AccordionItem>
@@ -3473,7 +4052,7 @@ function App(): React.ReactElement {
 
         <footer className="mt-8 border-t border-slate-200 bg-slate-50/80 py-4 text-[11px] text-slate-500 dark:border-slate-800 dark:bg-slate-950/80 dark:text-slate-400">
           <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4">
-            <span>本页面仅用于多种人格模型（如 MBTI、大五人格、九型人格）的风格偏好自测与教学演示，不构成任何形式的专业诊断。</span>
+            <span>本页面仅用于多种人格模型（如 MBTI、大五人格、九型人格、FPA 性格色彩）的风格偏好自测与教学演示，不构成任何形式的专业诊断。</span>
             <span>
               当前题库为内置多套版本；如需在课程或团队中统一管理结果，可通过保存结果图片的方式进行归档。
             </span>
