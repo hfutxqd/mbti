@@ -47,6 +47,8 @@ import ENTJImage from "@/assets/mbti/ENTJ.svg"
 
 // ================= 类型定义 =================
 
+type PersonalityModel = "MBTI" | "BigFive" | "Enneagram" | "Eysenck"
+
 type DimensionKey = "E" | "I" | "S" | "N" | "T" | "F" | "J" | "P" | "A" | "Turb" | "H" | "C"
 
 const CORE_DIM_KEYS: DimensionKey[] = ["E", "I", "S", "N", "T", "F", "J", "P"]
@@ -54,74 +56,124 @@ const EXT_DIM_KEYS: DimensionKey[] = ["A", "Turb", "H", "C"]
 const ALL_DIM_KEYS: DimensionKey[] = [...CORE_DIM_KEYS, ...EXT_DIM_KEYS]
 const QUESTIONS_PER_GROUP = 10
 
-type BuiltinBankKey = "pro-120" | "standard-80" | "simple-40" | "ext-60" | "ext-120" | "ext-180"
+type BuiltinBankKey =
+  | "pro-120"
+  | "standard-80"
+  | "simple-40"
+  | "ext-60"
+  | "ext-120"
+  | "ext-180"
+  | "bigfive-simple-60"
+  | "bigfive-pro-240"
+  | "enneagram-36"
+  | "enneagram-108"
+  | "eysenck-epq-short"
+  | "eysenck-epq-pro"
 
 interface BuiltinBankConfig {
   key: BuiltinBankKey
   label: string
   description: string
+  model: PersonalityModel
   file?: string
+  comingSoon?: boolean
 }
 
 const BUILTIN_BANKS: BuiltinBankConfig[] = [
   {
-    key: "pro-120",
-    label: "MBTI 专业版 120题",
-    description: "覆盖更全面的情境与行为，适合个人深度评估与教练场景。",
-    file: "/mbti_pro_120.json",
-  },
-  {
-    key: "standard-80",
-    label: "MBTI 标准版 80题",
-    description: "平衡测评时长与题目覆盖度，适合团队与工作坊使用。",
-    file: "/mbti_standard_80.json",
-  },
-  {
     key: "simple-40",
+    model: "MBTI",
     label: "MBTI 简版 40题",
     description: "快速自测版本，适合时间有限或首次尝试 MBTI 时使用。",
     file: "/mbti_simple_40.json",
   },
   {
+    key: "standard-80",
+    model: "MBTI",
+    label: "MBTI 标准版 80题",
+    description: "平衡测评时长与题目覆盖度，适合团队与工作坊使用。",
+    file: "/mbti_standard_80.json",
+  },
+  {
+    key: "pro-120",
+    model: "MBTI",
+    label: "MBTI 专业版 120题",
+    description: "覆盖更全面的情境与行为，适合个人深度评估与教练场景。",
+    file: "/mbti_pro_120.json",
+  },
+  {
     key: "ext-60",
+    model: "MBTI",
     label: "MBTI 扩展版 60题（含 A/T、H/C）",
     description: "在经典四维基础上增加 A/T 与 H/C 两组扩展维度，适合快速体验扩展版。",
     file: "/mbti_ext_60.json",
   },
   {
     key: "ext-120",
+    model: "MBTI",
     label: "MBTI 扩展版 120题（含 A/T、H/C）",
     description: "扩展题量与情境覆盖，更细腻地刻画六组维度偏好。",
     file: "/mbti_ext_120.json",
   },
   {
     key: "ext-180",
+    model: "MBTI",
     label: "MBTI 扩展版 180题（含 A/T、H/C）",
     description: "高精度测评版本，适合深度辅导与研究场景。",
     file: "/mbti_ext_180.json",
+  },
+  {
+    key: "bigfive-simple-60",
+    model: "BigFive",
+    label: "大五人格 简化版 60题",
+    description: "基于 OCEAN 五维模型的简化测评，适合快速了解人格倾向。",
+    file: "/bigfive_simple_60.json",
+  },
+  {
+    key: "bigfive-pro-240",
+    model: "BigFive",
+    label: "大五人格 专业版 240题",
+    description: "覆盖更丰富的生活与工作情境，用于深入刻画 O/C/E/A/N 五维轮廓。",
+    file: "/bigfive_pro_240.json",
+  },
+  {
+    key: "enneagram-36",
+    model: "Enneagram",
+    label: "九型人格 36题（敬请期待）",
+    description: "占位题库，后续将补充完整的九型人格测评。",
+    comingSoon: true,
+  },
+  {
+    key: "enneagram-108",
+    model: "Enneagram",
+    label: "九型人格 108题（敬请期待）",
+    description: "占位题库，后续将提供更深入的九型人格专业版。",
+    comingSoon: true,
+  },
+  {
+    key: "eysenck-epq-short",
+    model: "Eysenck",
+    label: "艾森克 EPQ 简版（敬请期待）",
+    description: "占位题库，后续将补充 EPQ 简版问卷。",
+    comingSoon: true,
+  },
+  {
+    key: "eysenck-epq-pro",
+    model: "Eysenck",
+    label: "艾森克 EPQ 专业版（敬请期待）",
+    description: "占位题库，后续将提供 EPQ 专业版问卷。",
+    comingSoon: true,
   },
 ]
 
 const DEFAULT_BUILTIN_KEY: BuiltinBankKey = "simple-40"
 
-interface Weights {
-  E: number
-  I: number
-  S: number
-  N: number
-  T: number
-  F: number
-  J: number
-  P: number
-  A: number
-  Turb: number
-  H: number
-  C: number
-}
+
+type ChoiceWeights = Record<string, number>
 
 interface Choice {
   label: string
-  weights: Weights
+  weights: ChoiceWeights
 }
 
 interface Question {
@@ -134,11 +186,13 @@ interface QuestionBankMetadata {
   title: string
   version: string
   language: string
+  model: PersonalityModel
 }
 
 interface QuestionBank {
   metadata: QuestionBankMetadata
-  dimensions: DimensionKey[]
+  dimensions: string[]
+  interpretations?: QuestionBankInterpretations
   questions: Question[]
 }
 
@@ -154,7 +208,16 @@ interface PairScore {
   rightPercent: number
 }
 
-interface MBTIResult {
+interface BaseResult {
+  model: PersonalityModel
+  answeredCount: number
+  totalQuestions: number
+  bankMetadata: QuestionBankMetadata
+  createdAt: string
+}
+
+interface MBTIResult extends BaseResult {
+  model: "MBTI"
   // 核心四字母类型，用于说明文案与查表
   type: string
   // 展示用类型字符串：可能是 4 字母或 6 字母（含 A/T、H/C 后缀）
@@ -162,11 +225,21 @@ interface MBTIResult {
   pairScores: PairScore[]
   extendedPairScores?: PairScore[]
   rawScores: Record<DimensionKey, number>
-  answeredCount: number
-  totalQuestions: number
-  bankMetadata: QuestionBankMetadata
-  createdAt: string
 }
+
+interface BigFiveTraitScore {
+  key: "O" | "C" | "E" | "A" | "N"
+  label: string
+  score: number
+  percent: number
+}
+
+interface BigFiveResult extends BaseResult {
+  model: "BigFive"
+  traits: BigFiveTraitScore[]
+}
+
+type AnyResult = MBTIResult | BigFiveResult
 
 interface TypeDescription {
   name: string
@@ -175,6 +248,17 @@ interface TypeDescription {
   career: string
   relationship: string
   cautions: string[]
+}
+
+interface TraitInterpretation {
+  high: string
+  low: string
+  tips?: string[]
+}
+
+interface QuestionBankInterpretations {
+  types?: Record<string, TypeDescription>
+  traits?: Record<string, TraitInterpretation>
 }
 
 type FilterMode = "all" | "unanswered" | "answered"
@@ -309,6 +393,7 @@ function clampPercent(value: number): number {
 }
 
 const PERCENT_PARAM_KEYS = [
+  "p_o",
   "p_e",
   "p_i",
   "p_s",
@@ -366,7 +451,7 @@ function normalizePairPercents(
   return { leftPercent: 100 - right, rightPercent: right }
 }
 
-function updateUrlWithResult(result: MBTIResult | null) {
+function updateUrlWithResult(result: AnyResult | null) {
   if (typeof window === "undefined") return
   const url = new URL(window.location.href)
 
@@ -374,29 +459,61 @@ function updateUrlWithResult(result: MBTIResult | null) {
   for (const key of PERCENT_PARAM_KEYS) {
     url.searchParams.delete(key)
   }
+  url.searchParams.delete("model")
 
   if (result) {
-    url.searchParams.set("result", result.displayType)
+    url.searchParams.set("model", result.model)
 
-    const allPairs: PairScore[] = [
-      ...result.pairScores,
-      ...(result.extendedPairScores ?? []),
-    ]
+    if (result.model === "MBTI") {
+      const mbti = result as MBTIResult
+      url.searchParams.set("result", mbti.displayType)
 
-    for (const pair of allPairs) {
-      const names = PAIR_PARAM_NAME_MAP[pair.key]
-      if (!names) continue
+      const allPairs: PairScore[] = [
+        ...mbti.pairScores,
+        ...(mbti.extendedPairScores ?? []),
+      ]
 
-      // 对于扩展维度，在得分为 0/0（无效维度）时不写入 URL
-      if ((pair.key === "AT" || pair.key === "HC") && pair.leftScore === 0 && pair.rightScore === 0) {
-        continue
+      for (const pair of allPairs) {
+        const names = PAIR_PARAM_NAME_MAP[pair.key]
+        if (!names) continue
+
+        // 对于扩展维度，在得分为 0/0（无效维度）时不写入 URL
+        if ((pair.key === "AT" || pair.key === "HC") && pair.leftScore === 0 && pair.rightScore === 0) {
+          continue
+        }
+
+        const left = clampPercent(pair.leftPercent)
+        const right = clampPercent(pair.rightPercent)
+
+        url.searchParams.set(names.left, String(left))
+        url.searchParams.set(names.right, String(right))
       }
+    } else if (result.model === "BigFive") {
+      const big = result as BigFiveResult
+      url.searchParams.set("result", "OCEAN")
 
-      const left = clampPercent(pair.leftPercent)
-      const right = clampPercent(pair.rightPercent)
-
-      url.searchParams.set(names.left, String(left))
-      url.searchParams.set(names.right, String(right))
+      for (const trait of big.traits) {
+        let paramName: string | null = null
+        switch (trait.key) {
+          case "O":
+            paramName = "p_o"
+            break
+          case "C":
+            paramName = "p_c"
+            break
+          case "E":
+            paramName = "p_e"
+            break
+          case "A":
+            paramName = "p_a"
+            break
+          case "N":
+            paramName = "p_n"
+            break
+        }
+        if (!paramName) continue
+        url.searchParams.set(paramName, String(clampPercent(trait.percent)))
+      }
     }
   } else {
     url.searchParams.delete("result")
@@ -414,6 +531,7 @@ function validateQuestionBank(raw: unknown): { ok: true; data: QuestionBank } | 
   const metadata = obj.metadata
   const dimensions = obj.dimensions
   const questions = obj.questions
+  const interpretations = obj.interpretations
 
   if (!metadata || typeof metadata !== "object") {
     return { ok: false, error: "缺少 metadata 字段或类型不正确" }
@@ -427,14 +545,47 @@ function validateQuestionBank(raw: unknown): { ok: true; data: QuestionBank } | 
     return { ok: false, error: "metadata.language 必须为字符串，例如 'zh-CN'" }
   }
 
+  const rawModel = metadata.model
+  if (typeof rawModel !== "string") {
+    return { ok: false, error: "metadata.model 必须为字符串，例如 'MBTI' 或 'BigFive'" }
+  }
+
+  let model: PersonalityModel
+  if (rawModel === "MBTI" || rawModel === "BigFive" || rawModel === "Enneagram" || rawModel === "Eysenck") {
+    model = rawModel
+  } else {
+    return { ok: false, error: `不支持的模型类型：${rawModel}` }
+  }
+
   if (!Array.isArray(dimensions)) {
     return { ok: false, error: "dimensions 必须为字符串数组" }
   }
 
-  const dimStrings: string[] = dimensions
-  const hasAllDims = CORE_DIM_KEYS.every((d) => dimStrings.includes(d))
-  if (!hasAllDims) {
-    return { ok: false, error: "dimensions 必须至少包含 E、I、S、N、T、F、J、P" }
+  const dimStrings: string[] = dimensions.map((d: any) => String(d))
+
+  if (model === "MBTI") {
+    const hasAllDims = CORE_DIM_KEYS.every((d) => dimStrings.includes(d))
+    if (!hasAllDims) {
+      return { ok: false, error: "MBTI 题库的 dimensions 必须至少包含 E、I、S、N、T、F、J、P" }
+    }
+  } else if (model === "BigFive") {
+    const required = ["O", "C", "E", "A", "N"]
+    const hasAll = required.every((d) => dimStrings.includes(d))
+    if (!hasAll) {
+      return { ok: false, error: "BigFive 题库的 dimensions 必须至少包含 O、C、E、A、N" }
+    }
+  } else if (model === "Enneagram") {
+    const required = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+    const hasAll = required.every((d) => dimStrings.includes(d))
+    if (!hasAll) {
+      return { ok: false, error: "九型人格题库的 dimensions 必须至少包含 1-9" }
+    }
+  } else if (model === "Eysenck") {
+    const required = ["E", "N", "P", "L"]
+    const hasAll = required.every((d) => dimStrings.includes(d))
+    if (!hasAll) {
+      return { ok: false, error: "艾森克 EPQ 题库的 dimensions 必须至少包含 E、N、P、L" }
+    }
   }
 
   if (!Array.isArray(questions) || questions.length === 0) {
@@ -471,41 +622,33 @@ function validateQuestionBank(raw: unknown): { ok: true; data: QuestionBank } | 
         return { ok: false, error: `题目 ${q.id} 的第 ${j + 1} 个选项缺少 weights 对象` }
       }
 
-      const safeWeights: Weights = {
-        E: 0,
-        I: 0,
-        S: 0,
-        N: 0,
-        T: 0,
-        F: 0,
-        J: 0,
-        P: 0,
-        A: 0,
-        Turb: 0,
-        H: 0,
-        C: 0,
-      }
-
-      for (const dim of ALL_DIM_KEYS) {
+      const weights: ChoiceWeights = {}
+      for (const dim of dimStrings) {
         const v = (w as any)[dim]
-        if (typeof v === "number" && !Number.isNaN(v)) {
-          safeWeights[dim] = v
+        if (typeof v === "number" && Number.isFinite(v)) {
+          weights[dim] = v
+        } else {
+          weights[dim] = 0
         }
       }
 
-      normalizedChoices.push({ label: c.label, weights: safeWeights })
+      normalizedChoices.push({ label: c.label, weights })
     }
 
     normalizedQuestions.push({ id: q.id, text: q.text, choices: normalizedChoices })
   }
 
+  const normalizedMetadata: QuestionBankMetadata = {
+    title: metadata.title,
+    version: metadata.version,
+    language: metadata.language,
+    model,
+  }
+
   const normalizedBank: QuestionBank = {
-    metadata: {
-      title: metadata.title,
-      version: metadata.version,
-      language: metadata.language,
-    },
-    dimensions: ALL_DIM_KEYS.filter((d) => dimStrings.includes(d)),
+    metadata: normalizedMetadata,
+    dimensions: dimStrings,
+    interpretations,
     questions: normalizedQuestions,
   }
 
@@ -934,6 +1077,7 @@ function computeMbtiResult(bank: QuestionBank, answers: Record<string, number>):
   }
 
   return {
+    model: "MBTI",
     type,
     displayType,
     pairScores,
@@ -946,6 +1090,83 @@ function computeMbtiResult(bank: QuestionBank, answers: Record<string, number>):
   }
 }
 
+function computeBigFiveResult(bank: QuestionBank, answers: Record<string, number>): BigFiveResult {
+  const traitKeys: Array<"O" | "C" | "E" | "A" | "N"> = ["O", "C", "E", "A", "N"]
+
+  const scores: Record<"O" | "C" | "E" | "A" | "N", number> = {
+    O: 0,
+    C: 0,
+    E: 0,
+    A: 0,
+    N: 0,
+  }
+
+  const maxScores: Record<"O" | "C" | "E" | "A" | "N", number> = {
+    O: 0,
+    C: 0,
+    E: 0,
+    A: 0,
+    N: 0,
+  }
+
+  let answeredCount = 0
+
+  // 理论最高分：用于计算百分比（假设每题都选该维度权重最大的选项）
+  for (const q of bank.questions) {
+    for (const trait of traitKeys) {
+      let localMax = 0
+      for (const choice of q.choices) {
+        const v = choice.weights[trait] ?? 0
+        if (v > localMax) {
+          localMax = v
+        }
+      }
+      maxScores[trait] += localMax
+    }
+  }
+
+  // 实际得分：根据用户作答累加
+  for (const q of bank.questions) {
+    const choiceIndex = answers[q.id]
+    if (choiceIndex === undefined || choiceIndex === null) continue
+    const choice = q.choices[choiceIndex]
+    if (!choice) continue
+    answeredCount++
+    for (const trait of traitKeys) {
+      const v = choice.weights[trait] ?? 0
+      scores[trait] += v
+    }
+  }
+
+  const labelMap: Record<"O" | "C" | "E" | "A" | "N", string> = {
+    O: "开放性 (O)",
+    C: "尽责性 (C)",
+    E: "外向性 (E)",
+    A: "宜人性 (A)",
+    N: "情绪稳定性 / 神经质 (N)",
+  }
+
+  const traits: BigFiveTraitScore[] = traitKeys.map((key) => {
+    const score = scores[key]
+    const max = maxScores[key]
+    const percent = max > 0 ? Math.round((score / max) * 100) : 50
+    return {
+      key,
+      label: labelMap[key],
+      score,
+      percent,
+    }
+  })
+
+  return {
+    model: "BigFive",
+    traits,
+    answeredCount,
+    totalQuestions: bank.questions.length,
+    bankMetadata: bank.metadata,
+    createdAt: new Date().toISOString(),
+  }
+}
 
 function getTimeEstimateRange(totalQuestions: number): string {
   if (!totalQuestions || totalQuestions <= 0) {
@@ -968,13 +1189,14 @@ function getTimeEstimateRange(totalQuestions: number): string {
 function App(): React.ReactElement {
   const isMobile = useIsMobile()
   const [theme, setTheme] = useState<"light" | "dark">("light")
+  const [selectedModel, setSelectedModel] = useState<PersonalityModel>("MBTI")
   const [questionBank, setQuestionBank] = useState<QuestionBank | null>(null)
   const [selectedBankKey, setSelectedBankKey] = useState<BuiltinBankKey>(DEFAULT_BUILTIN_KEY)
   const [bankError, setBankError] = useState<string | null>(null)
 
   const [answers, setAnswers] = useState<Record<string, number>>({})
   const [submitError, setSubmitError] = useState<string | null>(null)
-  const [result, setResult] = useState<MBTIResult | null>(null)
+  const [result, setResult] = useState<AnyResult | null>(null)
   const [captureHint, setCaptureHint] = useState<string | null>(null)
 
 
@@ -1014,8 +1236,16 @@ function App(): React.ReactElement {
     if (typeof window === "undefined") return
     try {
       const url = new URL(window.location.href)
-      const rawType = url.searchParams.get("result")
+      const params = url.searchParams
+      const modelParam = params.get("model")
+      const rawType = params.get("result")
       if (!rawType) return
+
+      // 若 URL 明确声明为其他模型，则不按 MBTI 解析，保持向后兼容旧链接（未带 model 参数的 MBTI 链接仍可使用）
+      if (modelParam && modelParam !== "MBTI") {
+        return
+      }
+
       const upper = rawType.toUpperCase()
 
       let baseType: string
@@ -1030,8 +1260,6 @@ function App(): React.ReactElement {
       } else {
         return
       }
-
-      const params = url.searchParams
 
       const pairScores = buildNeutralPairScores()
       const extendedPairScores = buildNeutralExtendedPairScores()
@@ -1073,9 +1301,11 @@ function App(): React.ReactElement {
         title: "外部结果（仅类型与维度百分比）",
         version: "1.0.0",
         language: "zh-CN",
+        model: "MBTI",
       }
 
       const placeholderResult: MBTIResult = {
+        model: "MBTI",
         type: baseType,
         displayType,
         pairScores,
@@ -1085,6 +1315,88 @@ function App(): React.ReactElement {
         totalQuestions: 0,
         bankMetadata: placeholderMetadata,
         createdAt: new Date().toISOString(),
+      }
+
+      setResult(placeholderResult)
+      setHasStarted(true)
+    } catch {
+      // 忽略不合法的 URL
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      const url = new URL(window.location.href)
+      const params = url.searchParams
+      const modelParam = params.get("model")
+      const rawResult = params.get("result")
+      const upperResult = rawResult ? rawResult.toUpperCase() : ""
+
+      // 优先依据 model 参数判断是否为大五人格结果，其次兼容旧链接中仅使用 result=OCEAN 的形式
+      const isBigFive = modelParam === "BigFive" || (!modelParam && upperResult === "OCEAN")
+      if (!isBigFive) {
+        return
+      }
+
+      const traitKeys: Array<"O" | "C" | "E" | "A" | "N"> = ["O", "C", "E", "A", "N"]
+      const labelMap: Record<"O" | "C" | "E" | "A" | "N", string> = {
+        O: "开放性 (O)",
+        C: "尽责性 (C)",
+        E: "外向性 (E)",
+        A: "宜人性 (A)",
+        N: "情绪稳定性 / 神经质 (N)",
+      }
+
+      const traits: BigFiveTraitScore[] = traitKeys.map((key) => {
+        let paramName: PercentParamKey | null = null
+        switch (key) {
+          case "O":
+            paramName = "p_o"
+            break
+          case "C":
+            paramName = "p_c"
+            break
+          case "E":
+            paramName = "p_e"
+            break
+          case "A":
+            paramName = "p_a"
+            break
+          case "N":
+            paramName = "p_n"
+            break
+        }
+        const raw = paramName ? params.get(paramName) : null
+        const percent = raw != null ? clampPercent(Number(raw)) : 50
+        return {
+          key,
+          label: labelMap[key],
+          score: percent,
+          percent,
+        }
+      })
+
+      const placeholderMetadata: QuestionBankMetadata = {
+        title: "外部结果（大五人格维度占比）",
+        version: "1.0.0",
+        language: "zh-CN",
+        model: "BigFive",
+      }
+
+      const placeholderResult: BigFiveResult = {
+        model: "BigFive",
+        traits,
+        answeredCount: 0,
+        totalQuestions: 0,
+        bankMetadata: placeholderMetadata,
+        createdAt: new Date().toISOString(),
+      }
+
+      setSelectedModel("BigFive")
+      const defaultBigFiveBank = BUILTIN_BANKS.find((b) => b.model === "BigFive" && !b.comingSoon)
+      if (defaultBigFiveBank) {
+        setSelectedBankKey(defaultBigFiveBank.key)
       }
 
       setResult(placeholderResult)
@@ -1148,8 +1460,36 @@ function App(): React.ReactElement {
           }
           return
         }
+
+        let bank = validated.data
+
+        // 若为 MBTI 题库，尝试从独立的解释 JSON 中加载类型解读，并挂载到题库的 interpretations 上
+        if (bank.metadata.model === "MBTI") {
+          try {
+            const interpRes = await fetch("/mbti_interpretations_types.json", { cache: "no-store" })
+            if (interpRes.ok) {
+              const interpJson = await interpRes.json()
+              if (interpJson && typeof interpJson === "object" && interpJson.types) {
+                const typesMap = interpJson.types as Record<string, TypeDescription>
+                bank = {
+                  ...bank,
+                  interpretations: {
+                    ...(bank.interpretations ?? {}),
+                    types: {
+                      ...(bank.interpretations?.types ?? {}),
+                      ...typesMap,
+                    },
+                  },
+                }
+              }
+            }
+          } catch {
+            // 若解释文件加载失败，沿用内置 TYPE_DESCRIPTIONS 作为回退
+          }
+        }
+
         if (!cancelled) {
-          applyNewBank(validated.data)
+          applyNewBank(bank)
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
@@ -1185,6 +1525,37 @@ function App(): React.ReactElement {
       setActiveGroupId(null)
     }
   }, [questionBank])
+
+  const availableBanks = useMemo(
+    () => BUILTIN_BANKS.filter((b) => b.model === selectedModel),
+    [selectedModel]
+  )
+
+  useEffect(() => {
+    const banksForModel = BUILTIN_BANKS.filter((b) => b.model === selectedModel)
+    const currentConfig = BUILTIN_BANKS.find((b) => b.key === selectedBankKey)
+    const firstUsable = banksForModel.find((b) => b.file && !b.comingSoon)
+
+    if (currentConfig && currentConfig.model === selectedModel && currentConfig.file && !currentConfig.comingSoon) {
+      return
+    }
+
+    if (firstUsable) {
+      setSelectedBankKey(firstUsable.key)
+      return
+    }
+
+    if (banksForModel[0]) {
+      setSelectedBankKey(banksForModel[0].key)
+    }
+
+    setQuestionBank(null)
+    setAnswers({})
+    setResult(null)
+    setSubmitError(null)
+    setCaptureHint(null)
+    setActiveGroupId(null)
+  }, [selectedModel, selectedBankKey])
 
   const totalQuestions = questionBank?.questions.length ?? 0
   const answeredCount = useMemo(() => Object.keys(answers).length, [answers])
@@ -1268,9 +1639,20 @@ function App(): React.ReactElement {
       }
       return
     }
-    const r = computeMbtiResult(questionBank, answers)
-    setResult(r)
-    updateUrlWithResult(r)
+
+    let nextResult: AnyResult | null = null
+
+    if (questionBank.metadata.model === "MBTI") {
+      nextResult = computeMbtiResult(questionBank, answers)
+    } else if (questionBank.metadata.model === "BigFive") {
+      nextResult = computeBigFiveResult(questionBank, answers)
+    } else {
+      setSubmitError("当前选择的模型暂未上线，请切换到其他题库后重试。")
+      return
+    }
+
+    setResult(nextResult)
+    updateUrlWithResult(nextResult)
     setSubmitError(null)
     setCaptureHint(null)
     if (typeof window !== "undefined") {
@@ -1314,7 +1696,11 @@ function App(): React.ReactElement {
       if (!blob) {
         throw new Error("生成图片数据失败")
       }
-      const fileName = `mbti-result-${result.displayType}-${Date.now()}.png`
+      const label =
+        result.model === "MBTI"
+          ? (result as MBTIResult).displayType
+          : "OCEAN"
+      const fileName = `personality-result-${label}-${Date.now()}.png`
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
@@ -1337,24 +1723,38 @@ function App(): React.ReactElement {
     }
   }
 
-  const activeTypeInfo = result ? TYPE_DESCRIPTIONS[result.type] : undefined
+  const mbtiResult = result && result.model === "MBTI" ? (result as MBTIResult) : null
+  const bigFiveResult = result && result.model === "BigFive" ? (result as BigFiveResult) : null
 
-  const atPair = result?.extendedPairScores?.find((p) => p.key === "AT")
-  const hcPair = result?.extendedPairScores?.find((p) => p.key === "HC")
+  const activeTypeInfo = useMemo(() => {
+    if (!mbtiResult) return undefined
+
+    // 优先从题库内置解读中读取；若题库缺少解读或为外部占位结果，则回退到内置映射
+    const typeKey = mbtiResult.type
+    const bankTypes =
+      questionBank && questionBank.metadata.model === "MBTI"
+        ? (questionBank.interpretations?.types as Record<string, TypeDescription | undefined> | undefined)
+        : undefined
+
+    return (bankTypes && (bankTypes[typeKey] || bankTypes[typeKey.slice(0, 4)])) ?? TYPE_DESCRIPTIONS[typeKey]
+  }, [mbtiResult, questionBank])
+
+  const atPair = mbtiResult?.extendedPairScores?.find((p) => p.key === "AT")
+  const hcPair = mbtiResult?.extendedPairScores?.find((p) => p.key === "HC")
   const hasATData = !!(atPair && (atPair.leftScore !== 0 || atPair.rightScore !== 0))
   const hasHCData = !!(hcPair && (hcPair.leftScore !== 0 || hcPair.rightScore !== 0))
 
-  const typeImage = result ? TYPE_IMAGE_MAP[result.type] : undefined
+  const typeImage = mbtiResult ? TYPE_IMAGE_MAP[mbtiResult.type] : undefined
 
   const allPairScores = useMemo(
     () =>
-      result
+      mbtiResult
         ? [
-            ...result.pairScores,
-            ...(result.extendedPairScores?.filter((p) => p.leftScore !== 0 || p.rightScore !== 0) ?? []),
+            ...mbtiResult.pairScores,
+            ...(mbtiResult.extendedPairScores?.filter((p) => p.leftScore !== 0 || p.rightScore !== 0) ?? []),
           ]
         : [],
-    [result]
+    [mbtiResult]
   )
 
   const chartData = useMemo(
@@ -1367,6 +1767,21 @@ function App(): React.ReactElement {
         rightLabel: p.rightLabel,
       })),
     [allPairScores]
+  )
+
+  const bigFiveTraitInterpretations = useMemo(
+    () => {
+      if (!bigFiveResult) return []
+      const traitInterps =
+        questionBank && questionBank.metadata.model === "BigFive"
+          ? questionBank.interpretations?.traits ?? {}
+          : {}
+      return bigFiveResult.traits.map((t) => ({
+        trait: t,
+        interp: (traitInterps as Record<string, TraitInterpretation | undefined>)[t.key],
+      }))
+    },
+    [bigFiveResult, questionBank]
   )
 
   const renderQuestionCard = (q: Question, globalIndex: number) => {
@@ -1425,6 +1840,222 @@ function App(): React.ReactElement {
     )
   }
 
+  const renderBigFiveResult = () => {
+    if (!bigFiveResult) return null
+
+    return (
+      <Card className="border-slate-200 bg-white/90 shadow-sm dark:border-slate-800 dark:bg-slate-950/80">
+        <CardHeader className="pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-baseline gap-2 text-lg sm:text-xl">
+                <span>你的人格五维轮廓（OCEAN）：</span>
+                <span className="font-mono text-2xl tracking-[0.2em] text-indigo-600 dark:text-indigo-300">
+                  OCEAN
+                </span>
+              </CardTitle>
+              <CardDescription className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                基于当前题库与作答情况，对开放性（O）、尽责性（C）、外向性（E）、宜人性（A）与情绪稳定性/神经质（N）进行百分比评估。
+              </CardDescription>
+            </div>
+            <div className="flex flex-col items-end gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <div className="flex flex-wrap items-center gap-2">
+                <span>题库：{bigFiveResult.bankMetadata.title}</span>
+                <span>· 版本：{bigFiveResult.bankMetadata.version}</span>
+                <span>
+                  · 已答：{bigFiveResult.answeredCount}/{bigFiveResult.totalQuestions}
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1"
+                onClick={handleReset}
+                aria-label="重新测试，返回答题模式"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                重新测试
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent className="grid gap-6 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1.1fr)]">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-300">
+                <span>五维人格分布</span>
+                <span className="text-[11px]">数值越高，代表该维度在本次测评中的倾向越明显。</span>
+              </div>
+              <div className="space-y-2 text-xs text-slate-700 dark:text-slate-300">
+                {bigFiveTraitInterpretations.map(({ trait }) => (
+                  <div
+                    key={trait.key}
+                    className="flex flex-col gap-1 rounded-md bg-slate-50 px-3 py-2 dark:bg-slate-900/70"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-medium">{trait.label}</span>
+                      <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                        {trait.percent}%
+                      </span>
+                    </div>
+                    <div className="flex h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                      <div
+                        className="h-full bg-indigo-500"
+                        style={{ width: `${trait.percent}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <Card className="border-slate-200 bg-slate-50/80 shadow-none dark:border-slate-700 dark:bg-slate-900/70">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">总体特征与简要说明</CardTitle>
+                <CardDescription className="text-xs text-slate-500 dark:text-slate-400">
+                  根据五个维度的高低分布，对你的人格轮廓做一个整体描述。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2 text-xs leading-relaxed text-slate-700 dark:text-slate-300">
+                <p>
+                  你的 OCEAN 分布大致为：
+                  {bigFiveResult.traits.map((t, index) => (
+                    <span key={t.key}>
+                      {index > 0 ? "，" : " "}
+                      {t.key} {t.percent}%
+                    </span>
+                  ))}
+                  。（接近 50% 的维度通常意味着在两侧特质间较为平衡。）
+                </p>
+                <ul className="list-disc space-y-1 pl-4">
+                  {bigFiveTraitInterpretations.map(({ trait, interp }) => {
+                    if (!interp) return null
+                    const isHigh = trait.percent >= 60
+                    const isLow = trait.percent <= 40
+                    let text: string | null = null
+                    if (isHigh) {
+                      text = interp.high
+                    } else if (isLow) {
+                      text = interp.low
+                    } else {
+                      text = `在 ${trait.label} 上，你整体偏向中间区间，可根据情境灵活表现不同侧面。`
+                    }
+                    return <li key={trait.key}>{text}</li>
+                  })}
+                </ul>
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-200 bg-slate-50/70 shadow-none dark:border-slate-700 dark:bg-slate-900/70">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">职业与工作风格</CardTitle>
+                <CardDescription className="text-xs text-slate-500 dark:text-slate-400">
+                  从五个维度出发，简要提示你在工作中的动力来源与适合的协作方式。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="text-xs leading-relaxed text-slate-700 dark:text-slate-300">
+                <ul className="list-disc space-y-1 pl-4">
+                  {bigFiveTraitInterpretations.map(({ trait, interp }) => {
+                    if (!interp?.tips || interp.tips.length === 0) return null
+                    const tip = interp.tips[0]
+                    return (
+                      <li key={trait.key}>
+                        [{trait.label}] {tip}
+                      </li>
+                    )
+                  })}
+                </ul>
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-200 bg-slate-50/70 shadow-none dark:border-slate-700 dark:bg-slate-900/70">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">人际与情感倾向</CardTitle>
+                <CardDescription className="text-xs text-slate-500 dark:text-slate-400">
+                  主要结合外向性（E）、宜人性（A）和情绪稳定性/神经质（N）的分布，帮助你理解在人际互动中的自然习惯。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="text-xs leading-relaxed text-slate-700 dark:text-slate-300">
+                <p>
+                  相对更高的外向性（E）通常意味着更愿意在社交场景中主动表达和互动；更高的宜人性（A）与合作、体谅他人相关；
+                  情绪稳定性/神经质（N）的高低，则与对压力和负面情绪的敏感度有关。你可以结合自己的三个维度百分比，思考自己在人际中的节奏与边界。
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-200 bg-slate-50/70 shadow-none dark:border-slate-700 dark:bg-slate-900/70">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">需要留意的地方</CardTitle>
+                <CardDescription className="text-xs text-slate-500 dark:text-slate-400">
+                  并非缺点，而是在某些维度特别高或特别低时，容易出现的惯性和盲区。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="text-xs leading-relaxed text-slate-700 dark:text-slate-300">
+                <ul className="list-disc space-y-1 pl-4">
+                  {bigFiveTraitInterpretations.map(({ trait, interp }) => {
+                    if (!interp) return null
+                    const isHigh = trait.percent >= 70
+                    const isLow = trait.percent <= 30
+                    if (!isHigh && !isLow && (!interp.tips || interp.tips.length === 0)) {
+                      return null
+                    }
+                    const tips = interp.tips ?? []
+                    return (
+                      <li key={trait.key}>
+                        [{trait.label}]
+                        {isHigh
+                          ? " 在该维度上偏高，适合关注何时“收一点力”，避免走向极端。"
+                          : isLow
+                          ? " 在该维度上偏低，可以思考是否需要在特定情境下刻意练习相关能力。"
+                          : " 维度接近中性，可根据情境灵活调整。"}
+                        {tips[0] ? ` ${tips[0]}` : ""}
+                      </li>
+                    )
+                  })}
+                </ul>
+              </CardContent>
+            </Card>
+
+            <Card className="border-dashed border-slate-200 bg-slate-50/60 shadow-none dark:border-slate-700 dark:bg-slate-900/60">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">结果导出与分享</CardTitle>
+                <CardDescription className="text-xs text-slate-500 dark:text-slate-400">
+                  生成当前结果截图，便于在团队 workshop、教练会谈或个人记录中保存与回顾。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 text-xs">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    className="gap-1"
+                    onClick={handleCaptureImage}
+                    aria-label="将结果保存为 PNG 图片"
+                  >
+                    <Image className="h-3.5 w-3.5" />
+                    保存结果图片（PNG）
+                  </Button>
+                </div>
+                {captureHint && (
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">{captureHint}</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <div className="flex items-start gap-2 rounded-md bg-amber-50 px-3 py-2 text-[11px] text-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+              <Info className="mt-px h-3.5 w-3.5" />
+              <p>
+                大五人格模型同样主要用于理解人格偏好与风格，不应用于给任何人贴标签或作为单一决策依据。请结合情境、发展阶段与个人经历综合理解结果。
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
   const timeEstimate = useMemo(() => getTimeEstimateRange(totalQuestions), [totalQuestions])
 
   return (
@@ -1434,12 +2065,14 @@ function App(): React.ReactElement {
         <header ref={headerRef} className="sticky top-0 z-20 border-b border-slate-200 bg-white/80 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80">
           <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-500 to-sky-400 text-xs font-bold text-white shadow-sm">
-                MBTI
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-500 to-sky-400 text-[10px] font-bold text-white shadow-sm">
+                性格
               </div>
               <div>
-                <div className="text-sm font-semibold sm:text-base">MBTI 专业版测试</div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">多题库 · 含扩展维度 A/T 与 H/C · 实时百分比解析</div>
+                <div className="text-sm font-semibold sm:text-base">人格模型专业测试</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">
+                  支持 MBTI / 大五人格 / 九型人格 / 艾森克 EPQ
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -1475,68 +2108,116 @@ function App(): React.ReactElement {
             <Card className="border-slate-200 bg-gradient-to-br from-slate-50 via-white to-indigo-50/60 shadow-sm dark:border-slate-800 dark:from-slate-950 dark:via-slate-950 dark:to-indigo-950/30">
               <CardHeader>
                 <CardTitle className="flex items-center justify-between gap-3">
-                  <span className="text-lg sm:text-xl">MBTI 专业版 · 在线性格评估</span>
-                  <Badge variant="outline" className="border-indigo-400/70 bg-indigo-50 text-[10px] font-medium text-indigo-700 dark:border-indigo-500/70 dark:bg-indigo-950/60 dark:text-indigo-200">
-                    专业题库
+                  <span className="text-lg sm:text-xl">人格模型专业测试</span>
+                  <Badge className="border-indigo-400/70 bg-indigo-50 text-[10px] font-medium text-indigo-700 dark:border-indigo-500/70 dark:bg-indigo-950/60 dark:text-indigo-200" variant="outline">
+                    支持 MBTI / 大五人格 / 九型人格 / 艾森克 EPQ
                   </Badge>
                 </CardTitle>
                 <CardDescription className="text-xs leading-relaxed text-slate-600 sm:text-sm dark:text-slate-400">
-                  本测评基于 MBTI 理论四大维度（E/I、S/N、T/F、J/P），通过多维度题目采集偏好倾向，自动计算百分比分布，
-                  生成你的四字母类型与简要解读。你可以根据场景选择简版、标准版、专业版或扩展版题库，用于个人或团队测评。
+                  本页面提供多种人格模型的自测工具，目前已开放 MBTI 与大五人格题库，并预留九型人格与艾森克 EPQ 的入口。
+                  题目基于结构化问卷设计，完成作答后可获取维度百分比与简要中文解读。
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-slate-400">
                   <div className="flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                    <span>{timeEstimate} · 单页作答</span>
+                    <span>{timeEstimate} · 基于当前题库预估答题时长</span>
                   </div>
                   <Separator orientation="vertical" className="hidden h-3 sm:inline" />
                   <div className="flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full bg-sky-400" />
-                    <span>内置多套中文题库（40/80/120 题，以及含 A/T、H/C 的扩展版）。</span>
+                    <span>内置多套中文题库（MBTI 40/80/120 题及扩展版，大五人格 60/240 题）。</span>
                   </div>
                   <Separator orientation="vertical" className="hidden h-3 sm:inline" />
                   <div className="flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full bg-indigo-400" />
-                    <span>结果支持保存为图片（PNG）分享</span>
+                    <span>结果支持保存为图片（PNG）分享；URL 可记录模型与维度百分比。</span>
                   </div>
                 </div>
-                <div className="space-y-2 text-xs">
-                  <Label className="flex items-center justify-between text-xs">
-                    <span className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
-                      <Info className="h-3.5 w-3.5" />
-                      <span>题库选择</span>
-                    </span>
-                  </Label>
-                  <Select
-                    value={selectedBankKey}
-                    onValueChange={(value) => {
-                      const key = value as BuiltinBankKey
-                      setSelectedBankKey(key)
-                    }}
-                  >
-                    <SelectTrigger className="h-8 w-full text-xs">
-                      <SelectValue placeholder="选择要使用的题库" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {BUILTIN_BANKS.map((bank) => (
-                        <SelectItem key={bank.key} value={bank.key} className="text-xs">
-                          {bank.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    默认使用简版 40题，可在此切换为标准版或专业版；也可选择包含 A/T 与 H/C 维度的扩展版题库。
-                  </p>
+
+                <div className="grid gap-4 text-xs md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label className="flex items-center justify-between text-xs">
+                      <span className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                        <Info className="h-3.5 w-3.5" />
+                        <span>模型选择</span>
+                      </span>
+                    </Label>
+                    <ToggleGroup
+                      type="single"
+                      value={selectedModel}
+                      onValueChange={(value) => {
+                        if (!value) return
+                        setSelectedModel(value as PersonalityModel)
+                      }}
+                      className="flex flex-wrap gap-1"
+                    >
+                      <ToggleGroupItem value="MBTI" className="px-2 py-1 text-[11px]">
+                        MBTI 16 型
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="BigFive" className="px-2 py-1 text-[11px]">
+                        大五人格（OCEAN）
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="Enneagram" className="px-2 py-1 text-[11px]">
+                        九型人格
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="Eysenck" className="px-2 py-1 text-[11px]">
+                        艾森克 EPQ
+                      </ToggleGroupItem>
+                    </ToggleGroup>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      当前已开放 MBTI 与大五人格测评，九型人格和艾森克 EPQ 将在后续版本逐步上线。
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="flex items-center justify-between text-xs">
+                      <span className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                        <Info className="h-3.5 w-3.5" />
+                        <span>题库选择</span>
+                      </span>
+                    </Label>
+                    <Select
+                      value={selectedBankKey}
+                      onValueChange={(value) => {
+                        const key = value as BuiltinBankKey
+                        setSelectedBankKey(key)
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-full text-xs">
+                        <SelectValue placeholder="选择要使用的题库" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableBanks.map((bank) => (
+                          <SelectItem
+                            key={bank.key}
+                            value={bank.key}
+                            className="text-xs"
+                            disabled={bank.comingSoon}
+                          >
+                            {bank.label}
+                            {bank.comingSoon ? "（敬请期待）" : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {selectedModel === "MBTI"
+                        ? "默认使用简版 40题，可在此切换为标准版、专业版或扩展版。"
+                        : selectedModel === "BigFive"
+                          ? "可选择大五人格简化版 60题或专业版 240题，题目均基于 OCEAN 五维模型。"
+                          : "当前模型题库处于建设中，题目将于后续版本上线。"}
+                    </p>
+                  </div>
                 </div>
+
                 <div className="flex flex-wrap items-center gap-3">
                   <Button
                     size="lg"
                     className="gap-2"
                     onClick={handleStartTest}
-                    aria-label={hasStarted ? "继续作答 MBTI 测试" : "开始 MBTI 测试"}
+                    aria-label={hasStarted ? "继续作答人格测评" : "开始人格测评"}
                   >
                     <span>{hasStarted ? "继续作答" : "开始测试"}</span>
                     <ArrowRight className="h-4 w-4" />
@@ -1759,14 +2440,16 @@ function App(): React.ReactElement {
           {/* 结果区 */}
           {result && (
             <section ref={resultSectionRef} className="space-y-4">
-              <Card className="border-slate-200 bg-white/90 shadow-sm dark:border-slate-800 dark:bg-slate-950/80">
-                <CardHeader className="pb-3">
+              {mbtiResult && (
+                <Card className="border-slate-200 bg-white/90 shadow-sm dark:border-slate-800 dark:bg-slate-950/80">
++                <CardHeader className="pb-3">
+
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <CardTitle className="flex items-baseline gap-2 text-lg sm:text-xl">
                         <span>你的 MBTI 类型：</span>
                         <span className="font-mono text-2xl tracking-[0.2em] text-indigo-600 dark:text-indigo-300">
-                          {result.displayType}
+                          {mbtiResult.displayType}
                         </span>
                         {activeTypeInfo && (
                           <Badge variant="outline" className="text-xs font-normal">
@@ -1782,7 +2465,7 @@ function App(): React.ReactElement {
                           <div className="h-24 w-24 sm:h-28 sm:w-28 md:h-32 md:w-32 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900">
                             <img
                               src={typeImage}
-                              alt={`${result.type} 类型示意图`}
+                              alt={`${mbtiResult.type} 类型示意图`}
                               className="h-full w-full object-contain"
                             />
                           </div>
@@ -1791,10 +2474,10 @@ function App(): React.ReactElement {
                     </div>
                     <div className="flex flex-col items-end gap-2 text-xs text-slate-500 dark:text-slate-400">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span>题库：{result.bankMetadata.title}</span>
-                        <span>· 版本：{result.bankMetadata.version}</span>
+                        <span>题库：{mbtiResult.bankMetadata.title}</span>
+                        <span>· 版本：{mbtiResult.bankMetadata.version}</span>
                         <span>
-                          · 已答：{result.answeredCount}/{result.totalQuestions}
+                          · 已答：{mbtiResult.answeredCount}/{mbtiResult.totalQuestions}
                         </span>
                       </div>
                       <Button
@@ -2051,6 +2734,8 @@ function App(): React.ReactElement {
                   </div>
                 </CardContent>
               </Card>
+              )}
+              {bigFiveResult && renderBigFiveResult()}
             </section>
           )}
 
