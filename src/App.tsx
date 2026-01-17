@@ -2463,6 +2463,29 @@ function App(): React.ReactElement {
   const hasATData = !!(atPair && (atPair.leftScore !== 0 || atPair.rightScore !== 0))
   const hasHCData = !!(hcPair && (hcPair.leftScore !== 0 || hcPair.rightScore !== 0))
 
+  const mbtiTraitMap =
+    questionBank && questionBank.metadata.model === "MBTI"
+      ? ((questionBank.interpretations?.traits ?? {}) as Record<string, TraitInterpretation | undefined>)
+      : null
+
+  const mbtiHasExtendedTraits =
+    !!(
+      mbtiTraitMap &&
+      (mbtiTraitMap["A"] || mbtiTraitMap["Turb"] || mbtiTraitMap["H"] || mbtiTraitMap["C"])
+    )
+
+  const atDominantKey =
+    hasATData && atPair ? (atPair.leftPercent >= atPair.rightPercent ? "A" : "Turb") : null
+
+  const hcDominantKey =
+    hasHCData && hcPair ? (hcPair.leftPercent >= hcPair.rightPercent ? "H" : "C") : null
+
+  const atDominantTraitInterp =
+    atDominantKey && mbtiTraitMap ? mbtiTraitMap[atDominantKey] : undefined
+
+  const hcDominantTraitInterp =
+    hcDominantKey && mbtiTraitMap ? mbtiTraitMap[hcDominantKey] : undefined
+
   const typeImage = mbtiResult ? TYPE_IMAGE_MAP[mbtiResult.type] : undefined
 
   const allPairScores = useMemo(
@@ -3809,12 +3832,23 @@ function App(): React.ReactElement {
                           {activeTypeInfo?.advice ??
                             "建议关注每一条维度的强弱分布，将结果作为探索自我偏好和沟通风格的起点，而非标签。"}
                         </p>
-                        {(hasATData || hasHCData) && (
+                        {mbtiHasExtendedTraits && (hasATData || hasHCData) && (
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                            {atDominantTraitInterp && (atDominantTraitInterp as any).summary}
+                            {hcDominantTraitInterp && (
+                              <>
+                                {atDominantTraitInterp ? " " : ""}
+                                {(hcDominantTraitInterp as any).summary}
+                              </>
+                            )}
+                          </p>
+                        )}
+                        {!mbtiHasExtendedTraits && (hasATData || hasHCData) && (
                           <p className="text-[11px] text-slate-500 dark:text-slate-400">
                             {hasATData && atPair && (
                               <>
                                 在 A/T 维度上，你略偏向
-                                {atPair.leftPercent >= atPair.rightPercent ? "自信型（A）" : "敏感型（T）"}，
+                                {atPair.leftPercent >= atPair.rightPercent ? "自信型（A）" : "敏感型（T)"}，
                                 A：{atPair.leftPercent}% / T：{atPair.rightPercent}%。
                               </>
                             )}
@@ -3844,7 +3878,13 @@ function App(): React.ReactElement {
                           {activeTypeInfo?.career ??
                             "当前类型暂无预设的职业说明，你可以结合自己的岗位和维度百分比，思考“我更习惯怎样工作、怎样协作”。"}
                         </p>
-                        {(hasATData || hasHCData) && (
+                        {mbtiHasExtendedTraits && (hasATData || hasHCData) && (
+                          <ul className="mt-1 list-disc space-y-1 pl-4 text-[11px] text-slate-500 dark:text-slate-400">
+                            {atDominantTraitInterp?.tips?.[0] && <li>{atDominantTraitInterp.tips[0]}</li>}
+                            {hcDominantTraitInterp?.tips?.[0] && <li>{hcDominantTraitInterp.tips[0]}</li>}
+                          </ul>
+                        )}
+                        {!mbtiHasExtendedTraits && (hasATData || hasHCData) && (
                           <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
                             {hasATData && atPair && (
                               <>
@@ -3880,7 +3920,13 @@ function App(): React.ReactElement {
                           {activeTypeInfo?.relationship ??
                             "当前类型暂无预设的人际说明，你可以留意自己在表达需求、处理冲突和亲近/保持距离上的习惯模式。"}
                         </p>
-                        {(hasATData || hasHCData) && (
+                        {mbtiHasExtendedTraits && (hasATData || hasHCData) && (
+                          <ul className="mt-1 list-disc space-y-1 pl-4 text-[11px] text-slate-500 dark:text-slate-400">
+                            {atDominantTraitInterp?.tips?.[1] && <li>{atDominantTraitInterp.tips[1]}</li>}
+                            {hcDominantTraitInterp?.tips?.[1] && <li>{hcDominantTraitInterp.tips[1]}</li>}
+                          </ul>
+                        )}
+                        {!mbtiHasExtendedTraits && (hasATData || hasHCData) && (
                           <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
                             {hasATData && atPair && (
                               <>
@@ -3917,7 +3963,13 @@ function App(): React.ReactElement {
                             {activeTypeInfo.cautions.map((item, index) => (
                               <li key={index}>{item}</li>
                             ))}
-                            {hasATData && atPair && (
+                            {mbtiHasExtendedTraits && (hasATData || hasHCData) && (
+                              <>
+                                {atDominantTraitInterp?.tips?.[2] && <li>{atDominantTraitInterp.tips[2]}</li>}
+                                {hcDominantTraitInterp?.tips?.[2] && <li>{hcDominantTraitInterp.tips[2]}</li>}
+                              </>
+                            )}
+                            {!mbtiHasExtendedTraits && hasATData && atPair && (
                               <li>
                                 在高压情境下，
                                 {atPair.leftPercent >= atPair.rightPercent
@@ -3925,7 +3977,7 @@ function App(): React.ReactElement {
                                   : "T 向的敏感可能让你更容易自责或过度反刍，适合找信任的人一起澄清事实与责任边界。"}
                               </li>
                             )}
-                            {hasHCData && hcPair && (
+                            {!mbtiHasExtendedTraits && hasHCData && hcPair && (
                               <li>
                                 在推进事务和关系时，
                                 {hcPair.leftPercent >= hcPair.rightPercent
